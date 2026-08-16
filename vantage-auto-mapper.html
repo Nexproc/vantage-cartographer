@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script type='text/javascript' src='https://cdn.discordapp.com/loNTAz133blnQBMLKG2CLXYNVbRX_5woZ9T2z5Ac7RnA3I5xVIQ_D4FC0J44sGiVVv7DVBurceB70vA_zKnK_a2GRf_UEXTXCWSBDDEcPbTyiuALzKG6mJTSKfSSo1Qy_zmMgWMygwJz58VHZGgGv0_wPZpVXiH4mV95FkR1WlG0fXIpbWqIvr9t6K1NK5ZQziRubuI0jw_3hJWBbSuh4duR7aAmxqFxrsCpAqBvn1CZ4THZEKWQezCZv12V-e7XaH6mTFsKee9ta6ssnwNhIeR93NY_RmddUfsCSg69k3PB90zo0e83OUD-wgPg-TYtMj05DrhP7dn752pQ0ldrUKEfyVdEzCty71plmIkxop0JT-IefEvAzl5wSB_yPTXpy6WMH8iAbtl8f8o3IFLqvJKzSJl6Y98PdxMz0rzqKSQreJREQEAVmIOb3NDPwCoGMHFErFT6mOokKzmDQPW_0hZzT4Kc9eJWD0ARX7nyyAfiv_wtEE83Xmal1-glmRHaNUn9ETp6TghPojOEAreXbfQhSmskWtfLojAss18bx4sPvVl8mC23Ev0Ld3cK0mYNP4BusOKZWZFCkmXuh5CzOK74iWt7fM9KDRnfNwIltPzBrx8NrKFfypztChZW41dBMQ2fVDEwraurB4tVKTLDS-6vgYbXsgeYSqKPu4SymDzoajAwPgp1-mA'></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shared Node Map</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Caveat:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            color: #eee;
+            font-family: 'Caveat', cursive, sans-serif;
+            user-select: none;
+        }
+
+        canvas {
+            display: block;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        canvas.draw-mode {
+            cursor: crosshair;
+        }
+        
+        canvas.erase-mode {
+            cursor: cell;
+        }
+
+        #toolbar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(40, 40, 40, 0.9);
+            padding: 15px;
+            border-radius: 12px;
+            border: 2px solid #555;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+
+        /* New Move Panel Styles */
+        #move-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(40, 40, 40, 0.9);
+            padding: 20px;
+            border-radius: 12px;
+            border: 2px solid #555;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            width: 260px;
+        }
+
+        #move-panel h3 {
+            margin: 0 0 5px 0;
+            font-size: 24px;
+            border-bottom: 1px solid #666;
+            padding-bottom: 8px;
+        }
+
+        .form-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .form-group label {
+            font-size: 18px;
+        }
+
+        .form-group input, .form-group select {
+            width: 120px;
+        }
+
+        button, input, select {
+            background: #333;
+            color: #fff;
+            border: 1px solid #666;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: inherit;
+            font-size: 16px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        button:hover { background: #444; }
+        button.active { background: #5a8a5a; border-color: #7fbf7f; }
+        
+        input[type="color"] {
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            border: none;
+            cursor: pointer;
+        }
+
+        .label { font-size: 18px; margin-right: 5px;}
+    </style>
+</head>
+<body>
+
+    <div id="toolbar">
+        <button id="btn-drag" class="active" onclick="setMode('drag')">✋ Move/Drag Map</button>
+        <button id="btn-draw" onclick="setMode('draw')">✏️ Draw</button>
+        <button id="btn-erase" onclick="setMode('erase')">🧽 Erase</button>
+        
+        <div style="width: 2px; height: 30px; background: #666;"></div>
+        
+        <span class="label">Pen Color:</span>
+        <input type="color" id="pen-color" value="#ffffff">
+        <button onclick="clearDrawings()">🗑️ Clear Drawings</button>
+    </div>
+
+    <!-- Move Character Interface -->
+    <div id="move-panel">
+        <h3>🏃 Move Character</h3>
+        
+        <div class="form-group">
+            <label>Character:</label>
+            <select id="move-char" onchange="updateMoveForm()"></select>
+        </div>
+        
+        <div class="form-group">
+            <label>From ID:</label>
+            <input type="text" id="move-from">
+        </div>
+
+        <div class="form-group">
+            <label>Direction:</label>
+            <select id="move-dir" onchange="updateMoveForm()">
+                <option value="N">North (N)</option>
+                <option value="NE">Northeast (NE)</option>
+                <option value="E">East (E)</option>
+                <option value="SE">Southeast (SE)</option>
+                <option value="S">South (S)</option>
+                <option value="SW">Southwest (SW)</option>
+                <option value="W">West (W)</option>
+                <option value="NW">Northwest (NW)</option>
+                <option value="Special">Special...</option>
+            </select>
+        </div>
+
+        <div class="form-group" id="special-group" style="display: none;">
+            <label>Special ID:</label>
+            <input type="text" id="move-special" placeholder="e.g. Wormhole">
+        </div>
+
+        <div class="form-group">
+            <label>To ID:</label>
+            <input type="text" id="move-to">
+        </div>
+
+        <button onclick="executeMove()" style="margin-top: 10px; width: 100%; background: #2f5a8a; border-color: #4a80bd;">🚀 Execute Move</button>
+    </div>
+
+    <canvas id="mapCanvas"></canvas>
+
+<script>
+/** 
+ * DATA MODELS 
+ */
+
+const mapAdjacency = {
+    'c1': [{ id: 'c2', dir: 'E', characters: ['Chan'] }],
+    'c2': [{ id: 'c3', dir: 'N', characters: ['Chan'] }],
+    'c3': [{ id: 'c4', dir: 'NE', characters: ['Chan'] }],
+    'c4': [{ id: 'c5', dir: 'Special_Wormhole', characters: ['Chan'] }],
+    
+    't1': [{ id: 't2', dir: 'N', characters: ['Ting'] }],
+    't2': [{ id: 't3', dir: 'E', characters: ['Ting'] }],
+    't3': [{ id: 't4', dir: 'NE', characters: ['Ting'] }],
+
+    'c5': [{ id: 'shared1', dir: 'S', characters: ['Chan', 'Ting'] }]
+};
+
+const characters = {
+    'Chan': { color: '#b683ff', location_id: 'c5' },
+    'Ting': { color: '#e6cc55', location_id: 't4' },
+    'Both': { color: '#ffffff', location_id: 'shared1' } 
+};
+
+/** 
+ * GRAPHICS ENGINE & STATE 
+ */
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+
+let mode = 'drag'; 
+let drawings = []; 
+let currentStroke = null;
+
+let nodes = {};  
+let groups = {}; 
+let globalGroupCounter = 0; // Tracks unique map detachments
+
+let camera = { x: 0, y: 0 };
+let isDraggingCamera = false;
+let draggedGroup = null;
+let lastMouse = { x: 0, y: 0 };
+
+const GRID_SIZE = 80;
+const DIRS = {
+    'N':  {x: 0,  y: -1}, 'S':  {x: 0,  y: 1}, 
+    'E':  {x: 1,  y: 0},  'W':  {x: -1, y: 0},
+    'NE': {x: 1,  y: -1}, 'NW': {x: -1, y: -1}, 
+    'SE': {x: 1,  y: 1},  'SW': {x: -1, y: 1}
+};
+
+function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    draw();
+}
+window.addEventListener('resize', resize);
+
+/**
+ * MAP BUILDER (Initial Load)
+ */
+function buildMap() {
+    let allNodes = new Set(Object.keys(mapAdjacency));
+    
+    for (let u in mapAdjacency) {
+        mapAdjacency[u].forEach(edge => allNodes.add(edge.id));
+    }
+
+    const startPositions = [
+        {x: window.innerWidth * 0.3, y: window.innerHeight * 0.4},
+        {x: window.innerWidth * 0.7, y: window.innerHeight * 0.6},
+        {x: window.innerWidth * 0.5, y: window.innerHeight * 0.8}
+    ];
+
+    allNodes.forEach(nodeId => {
+        if (!nodes[nodeId]) {
+            let gId = globalGroupCounter++;
+            let pos = startPositions[gId % startPositions.length] || {x: window.innerWidth/2, y: window.innerHeight/2};
+            groups[gId] = { offsetX: pos.x, offsetY: pos.y };
+            nodes[nodeId] = { id: nodeId, groupId: gId, lx: 0, ly: 0 };
+
+            let queue = [nodeId];
+            while (queue.length > 0) {
+                let curr = queue.shift();
+                let currNode = nodes[curr];
+
+                if (mapAdjacency[curr]) {
+                    mapAdjacency[curr].forEach(edge => {
+                        if (!edge.dir.startsWith('Special')) {
+                            if (!nodes[edge.id]) {
+                                nodes[edge.id] = {
+                                    id: edge.id,
+                                    groupId: currNode.groupId,
+                                    lx: currNode.lx + DIRS[edge.dir].x * GRID_SIZE,
+                                    ly: currNode.ly + DIRS[edge.dir].y * GRID_SIZE
+                                };
+                                queue.push(edge.id);
+                            } else if (nodes[edge.id].groupId !== currNode.groupId) {
+                                // Maps merge if a cardinal connection is discovered
+                                let oldGroupId = nodes[edge.id].groupId;
+                                let mergeDx = (currNode.lx + DIRS[edge.dir].x * GRID_SIZE) - nodes[edge.id].lx;
+                                let mergeDy = (currNode.ly + DIRS[edge.dir].y * GRID_SIZE) - nodes[edge.id].ly;
+
+                                for (let n in nodes) {
+                                    if (nodes[n].groupId === oldGroupId) {
+                                        nodes[n].groupId = currNode.groupId;
+                                        nodes[n].lx += mergeDx;
+                                        nodes[n].ly += mergeDy;
+                                    }
+                                }
+                                delete groups[oldGroupId];
+                            }
+                        }
+                    });
+                }
+            }
+        }
+    });
+    updateGlobalCoords();
+}
+
+function updateGlobalCoords() {
+    for (let id in nodes) {
+        let n = nodes[id];
+        let g = groups[n.groupId];
+        n.gx = g.offsetX + n.lx;
+        n.gy = g.offsetY + n.ly;
+    }
+}
+
+/** 
+ * MOVE CHARACTER LOGIC
+ */
+function initMovePanel() {
+    let select = document.getElementById('move-char');
+    select.innerHTML = '';
+    for (let c in characters) {
+        let opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        select.appendChild(opt);
+    }
+    updateMoveForm();
+}
+
+function updateMoveForm() {
+    let char = document.getElementById('move-char').value;
+    if (characters[char]) {
+        document.getElementById('move-from').value = characters[char].location_id;
+    }
+    let dir = document.getElementById('move-dir').value;
+    document.getElementById('special-group').style.display = (dir === 'Special') ? 'flex' : 'none';
+}
+
+function executeMove() {
+    let charName = document.getElementById('move-char').value;
+    let fromId = document.getElementById('move-from').value.trim();
+    let dir = document.getElementById('move-dir').value;
+    let toId = document.getElementById('move-to').value.trim();
+    
+    if (dir === 'Special') {
+        let sp = document.getElementById('move-special').value.trim();
+        if (!sp) return alert("Please provide a Special ID.");
+        dir = 'Special_' + sp;
+    }
+
+    if (!charName || !fromId || !toId || !dir) return alert("Please fill all fields.");
+
+    // 1. Update adjacency array logic
+    if (!mapAdjacency[fromId]) mapAdjacency[fromId] = [];
+    
+    let existingEdge = mapAdjacency[fromId].find(e => e.id === toId && e.dir === dir);
+    if (existingEdge) {
+        if (!existingEdge.characters.includes(charName)) {
+            existingEdge.characters.push(charName);
+        }
+    } else {
+        mapAdjacency[fromId].push({ id: toId, dir: dir, characters: [charName] });
+    }
+
+    // 2. Update character location
+    if (characters[charName]) {
+        characters[charName].location_id = toId;
+    }
+
+    // 3. Topology Update: dynamically place nodes and merge maps if needed
+    let isSpecial = dir.startsWith('Special');
+
+    if (!nodes[fromId]) {
+        // Unlikely, but if user typed a totally new starting point
+        let gId = globalGroupCounter++;
+        groups[gId] = { offsetX: -camera.x + window.innerWidth / 2, offsetY: -camera.y + window.innerHeight / 2 };
+        nodes[fromId] = { id: fromId, groupId: gId, lx: 0, ly: 0 };
+    }
+
+    if (!nodes[toId]) {
+        // Target is a brand new node
+        if (isSpecial) {
+            let gId = globalGroupCounter++;
+            groups[gId] = { offsetX: nodes[fromId].gx + 120, offsetY: nodes[fromId].gy + 120 };
+            nodes[toId] = { id: toId, groupId: gId, lx: 0, ly: 0 };
+        } else {
+            nodes[toId] = {
+                id: toId,
+                groupId: nodes[fromId].groupId,
+                lx: nodes[fromId].lx + DIRS[dir].x * GRID_SIZE,
+                ly: nodes[fromId].ly + DIRS[dir].y * GRID_SIZE
+            };
+        }
+    } else {
+        // Both nodes already exist. If this was a cardinal move, check if we need to MERGE groups
+        if (!isSpecial && nodes[fromId].groupId !== nodes[toId].groupId) {
+            let targetGroup = nodes[fromId].groupId;
+            let oldGroupId = nodes[toId].groupId;
+            
+            let expectedLx = nodes[fromId].lx + DIRS[dir].x * GRID_SIZE;
+            let expectedLy = nodes[fromId].ly + DIRS[dir].y * GRID_SIZE;
+
+            let mergeDx = expectedLx - nodes[toId].lx;
+            let mergeDy = expectedLy - nodes[toId].ly;
+
+            for (let n in nodes) {
+                if (nodes[n].groupId === oldGroupId) {
+                    nodes[n].groupId = targetGroup;
+                    nodes[n].lx += mergeDx;
+                    nodes[n].ly += mergeDy;
+                }
+            }
+            delete groups[oldGroupId];
+        }
+    }
+
+    updateGlobalCoords();
+    updateMoveForm(); // Resync UI showing the character's new starting location
+    document.getElementById('move-to').value = ''; // clear for next move
+    draw();
+}
+
+/** 
+ * RENDERING 
+ */
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.save();
+    ctx.translate(camera.x, camera.y);
+
+    // 1. Draw Freehand Background and Eraser Strokes
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    drawings.forEach(stroke => {
+        if (stroke.points.length < 2) return;
+        
+        ctx.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
+        
+        ctx.beginPath();
+        ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+        for (let i = 1; i < stroke.points.length; i++) {
+            ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+        }
+        
+        ctx.lineWidth = stroke.isEraser ? 25 : 3;
+        ctx.strokeStyle = stroke.isEraser ? '#000000' : stroke.color;
+        ctx.stroke();
+    });
+    
+    ctx.globalCompositeOperation = 'source-over';
+
+    // 2. Draw Map Edges (Paths)
+    for (let u in mapAdjacency) {
+        let uNode = nodes[u];
+        if (!uNode) continue;
+
+        mapAdjacency[u].forEach(edge => {
+            let vNode = nodes[edge.id];
+            if (!vNode) return;
+
+            let isSpecial = edge.dir.startsWith('Special');
+            let charCount = edge.characters.length;
+            
+            edge.characters.forEach((charName, index) => {
+                let color = characters[charName]?.color || '#ffffff';
+                let offsetMag = (index - (charCount - 1) / 2) * 12;
+                
+                drawPathArrow(uNode.gx, uNode.gy, vNode.gx, vNode.gy, color, isSpecial, offsetMag);
+            });
+        });
+    }
+
+    // 3. Draw Nodes 
+    for (let id in nodes) {
+        let n = nodes[id];
+        ctx.beginPath();
+        ctx.arc(n.gx, n.gy, 6, 0, Math.PI * 2);
+        ctx.strokeStyle = '#888';
+        ctx.lineWidth = 2;
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fill();
+        ctx.stroke();
+    }
+
+    // 4. Draw Characters
+    ctx.font = '22px Caveat, cursive, sans-serif';
+    ctx.textAlign = 'center';
+    for (let charName in characters) {
+        let charData = characters[charName];
+        let locNode = nodes[charData.location_id];
+        if (locNode) {
+            ctx.fillStyle = charData.color;
+            ctx.fillText(charName, locNode.gx, locNode.gy - 15);
+        }
+    }
+
+    ctx.restore();
+}
+
+function drawPathArrow(x1, y1, x2, y2, color, isSpecial, offset) {
+    let dx = x2 - x1;
+    let dy = y2 - y1;
+    let len = Math.sqrt(dx * dx + dy * dy);
+    
+    let nx = -dy / len;
+    let ny = dx / len;
+
+    let sx = x1 + nx * offset;
+    let sy = y1 + ny * offset;
+    let ex = x2 + nx * offset;
+    let ey = y2 + ny * offset;
+
+    let padding = 10;
+    let dirX = dx / len;
+    let dirY = dy / len;
+    sx += dirX * padding;
+    sy += dirY * padding;
+    ex -= dirX * padding;
+    ey -= dirY * padding;
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+
+    let arrowTargetX = ex;
+    let arrowTargetY = ey;
+    let arrowAngle;
+
+    if (isSpecial) {
+        ctx.setLineDash([4, 6]); 
+        let cx = (sx + ex) / 2 + nx * 80;
+        let cy = (sy + ey) / 2 + ny * 80;
+        
+        ctx.moveTo(sx, sy);
+        ctx.quadraticCurveTo(cx, cy, ex, ey);
+        
+        let t = 0.95; 
+        let px = (1-t)*(1-t)*sx + 2*(1-t)*t*cx + t*t*ex;
+        let py = (1-t)*(1-t)*sy + 2*(1-t)*t*cy + t*t*ey;
+        arrowAngle = Math.atan2(ey - py, ex - px);
+    } else {
+        ctx.setLineDash([]); 
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        arrowAngle = Math.atan2(dy, dx);
+    }
+    
+    ctx.stroke();
+    ctx.setLineDash([]); 
+
+    let headLen = 10;
+    ctx.beginPath();
+    ctx.moveTo(arrowTargetX, arrowTargetY);
+    ctx.lineTo(arrowTargetX - headLen * Math.cos(arrowAngle - Math.PI / 6), arrowTargetY - headLen * Math.sin(arrowAngle - Math.PI / 6));
+    ctx.moveTo(arrowTargetX, arrowTargetY);
+    ctx.lineTo(arrowTargetX - headLen * Math.cos(arrowAngle + Math.PI / 6), arrowTargetY - headLen * Math.sin(arrowAngle + Math.PI / 6));
+    ctx.stroke();
+}
+
+/** 
+ * INPUT HANDLING 
+ */
+function getMousePos(e) {
+    return { x: e.clientX, y: e.clientY };
+}
+
+function getWorldPos(e) {
+    return { x: e.clientX - camera.x, y: e.clientY - camera.y };
+}
+
+canvas.addEventListener('mousedown', (e) => {
+    // Ignore input if user clicked inside UI panels
+    if (e.target.closest('#toolbar') || e.target.closest('#move-panel')) return;
+
+    let wp = getWorldPos(e);
+    lastMouse = getMousePos(e);
+
+    if (mode === 'draw' || mode === 'erase') {
+        let color = document.getElementById('pen-color').value;
+        currentStroke = { 
+            color: color, 
+            isEraser: mode === 'erase', 
+            points: [wp] 
+        };
+        drawings.push(currentStroke);
+    } 
+    else if (mode === 'drag') {
+        let clickedNode = null;
+        for (let id in nodes) {
+            let n = nodes[id];
+            let dist = Math.hypot(n.gx - wp.x, n.gy - wp.y);
+            if (dist < 20) { 
+                clickedNode = n;
+                break;
+            }
+        }
+
+        if (clickedNode) {
+            draggedGroup = groups[clickedNode.groupId];
+        } else {
+            isDraggingCamera = true;
+        }
+    }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+    if (e.target.closest('#toolbar') || e.target.closest('#move-panel')) return;
+
+    let mp = getMousePos(e);
+    let wp = getWorldPos(e);
+    let dx = mp.x - lastMouse.x;
+    let dy = mp.y - lastMouse.y;
+
+    if ((mode === 'draw' || mode === 'erase') && currentStroke) {
+        currentStroke.points.push(wp);
+        draw();
+    } 
+    else if (mode === 'drag') {
+        if (draggedGroup) {
+            draggedGroup.offsetX += dx;
+            draggedGroup.offsetY += dy;
+            updateGlobalCoords();
+            draw();
+        } else if (isDraggingCamera) {
+            camera.x += dx;
+            camera.y += dy;
+            draw();
+        }
+    }
+    lastMouse = mp;
+});
+
+canvas.addEventListener('mouseup', () => {
+    currentStroke = null;
+    draggedGroup = null;
+    isDraggingCamera = false;
+});
+canvas.addEventListener('mouseleave', () => {
+    currentStroke = null;
+    draggedGroup = null;
+    isDraggingCamera = false;
+});
+
+/** 
+ * UI CONTROLS 
+ */
+function setMode(newMode) {
+    mode = newMode;
+    document.getElementById('btn-drag').classList.toggle('active', mode === 'drag');
+    document.getElementById('btn-draw').classList.toggle('active', mode === 'draw');
+    document.getElementById('btn-erase').classList.toggle('active', mode === 'erase');
+    
+    if (mode === 'draw') canvas.className = 'draw-mode';
+    else if (mode === 'erase') canvas.className = 'erase-mode';
+    else canvas.className = '';
+}
+
+function clearDrawings() {
+    drawings = [];
+    draw();
+}
+
+// Initialization
+buildMap();
+initMovePanel();
+resize();
+</script>
+</body>
+</html>
