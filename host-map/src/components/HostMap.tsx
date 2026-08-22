@@ -279,6 +279,7 @@ const HostMap: React.FC = () => {
               
               // --- ENDPOINT: /connect ---
               if (endpoint === '/connect') {
+                console.log('connect called.');
                 const { playerName } = body;
                 const hasLoc = !!state.characters[playerName]?.location_id;
                 responseData = { success: true, hasLocation: hasLoc };
@@ -286,6 +287,7 @@ const HostMap: React.FC = () => {
               
               // --- ENDPOINT: /crashland ---
               else if (endpoint === '/crashland') {
+                console.log('crashland called.');
                 const { playerName, requestedLocation, playerColor } = body;
                 state.characters[playerName] = { 
                   color: playerColor || '#ffffff', 
@@ -305,6 +307,7 @@ const HostMap: React.FC = () => {
               
               // --- ENDPOINT: /move ---
             else if (endpoint === '/move') {
+                console.log('move called.');
                 const { playerName, currentLocation, targetLocation, direction, specialId } = body;
                 
                 processMove({
