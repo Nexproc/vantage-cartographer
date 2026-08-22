@@ -13,21 +13,8 @@ const HostMap: React.FC = () => {
   
   // Game State Ref (Mutable to avoid React re-renders killing 60fps canvas)
   const engine = useRef<GameState>({
-    mapAdjacency: {
-      'c1': [{ id: 'c2', dir: 'E', characters: ['Chan'] }],
-      'c2': [{ id: 'c3', dir: 'N', characters: ['Chan'] }],
-      'c3': [{ id: 'c4', dir: 'NE', characters: ['Chan'] }],
-      'c4': [{ id: 'c5', dir: 'Special_Wormhole', characters: ['Chan'] }],
-      't1': [{ id: 't2', dir: 'N', characters: ['Ting'] }],
-      't2': [{ id: 't3', dir: 'E', characters: ['Ting'] }],
-      't3': [{ id: 't4', dir: 'NE', characters: ['Ting'] }],
-      'c5': [{ id: 'shared1', dir: 'S', characters: ['Chan', 'Ting'] }]
-    },
-    characters: {
-      'Chan': { color: '#b683ff', location_id: 'c5' },
-      'Ting': { color: '#e6cc55', location_id: 't4' },
-      'Both': { color: '#ffffff', location_id: 'shared1' }
-    },
+    mapAdjacency: {}, // Start completely empty
+    characters: {},   // Start with no characters preloaded
     nodes: {}, 
     groups: {}, 
     globalGroupCounter: 0,
@@ -317,16 +304,17 @@ const HostMap: React.FC = () => {
               } 
               
               // --- ENDPOINT: /move ---
-              else if (endpoint === '/move') {
-                const { playerName, currentLocation, targetLocation, direction } = body;
-                // Re-use our existing processMove logic here
+            else if (endpoint === '/move') {
+                const { playerName, currentLocation, targetLocation, direction, specialId } = body;
+                
                 processMove({
                   charName: playerName,
-                  fromId: currentLocation || state.characters[playerName].location_id,
+                  fromId: currentLocation || state.characters[playerName]?.location_id,
                   dir: direction,
                   toId: targetLocation,
-                  specialId: direction.includes('Special') ? targetLocation : ''
+                  specialId: specialId || (direction.includes('Special') ? targetLocation : '')
                 });
+                
                 responseData = { newLocation: targetLocation };
               }
   
