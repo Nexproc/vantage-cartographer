@@ -1,0 +1,69 @@
+# This is a basic workflow to help you get started with Actions
+
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events but only for the "main" branch
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      # 1. Build the Main Host Map (Assuming it's in the root folder)
+      - name: Install Host Dependencies
+        working-directory: ./host-map
+        run: npm ci
+
+      - name: Build Host Map
+        working-directory: ./host-map
+        run: npm run build
+        
+      # 2. Build the Controller App
+      - name: Install Controller Dependencies
+        working-directory: ./controller
+        run: npm ci
+
+      - name: Build Controller App
+        working-directory: ./controller
+        run: npm run build
+
+      # 3. Merge the builds together
+      # We move the controller's dist folder INTO the host's dist folder
+      - name: Merge Outputs
+        run: |
+          mkdir -p dist
+          mkdir -p dist/controller
+          mkdir -p dist/host-map
+          cp -r controller/dist/* dist/controller/
+          cp -r host-map/dist/* dist/host-map/
+
+      # 4. Upload the combined dist folder as an artifact
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./dist
+
+      # 5. Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
