@@ -287,7 +287,7 @@ const HostMap: React.FC = () => {
               
               // --- ENDPOINT: /crashland ---
               else if (endpoint === '/crashland') {
-                console.log('crashland called.');
+                console.log('crashland called with: ', body);
                 const { playerName, requestedLocation, playerColor } = body;
                 state.characters[playerName] = { 
                   color: playerColor || '#ffffff', 

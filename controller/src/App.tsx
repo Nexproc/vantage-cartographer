@@ -40,6 +40,7 @@ const SetupScreen: React.FC<{ playerName: string, onCrashLand: (l: string, c: st
       alert("Location ID must be a 2 to 4 digit number.");
       return;
     }
+    console.log(loc);
     onCrashLand(loc, color);
   };
 
