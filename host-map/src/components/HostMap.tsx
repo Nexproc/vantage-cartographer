@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Peer from 'peerjs';
-import type { GameState, MovePayload, PeerMessage } from '../types';
+import type { GameState, MovePayload } from '../types';
 
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
