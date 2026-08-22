@@ -1,14 +1,15 @@
-import Peer, { type DataConnection } from 'peerjs';
+import Peer, { type DataConnection } from "peerjs";
 import type { Direction, Resources } from './types';
 
 export class GameService {
   private static peer: Peer | null = null;
   private static conn: DataConnection | null = null;
-  
-  // Stores unresolved promises mapped to request IDs
   private static pendingRequests: Record<string, { resolve: Function, reject: Function }> = {};
 
   static async setHost(hostCode: string): Promise<void> {
+    // If we are already connected to this host, don't reconnect
+    if (this.conn && this.conn.open) return;
+
     return new Promise((resolve, reject) => {
       this.peer = new Peer();
       
@@ -16,10 +17,9 @@ export class GameService {
         this.conn = this.peer!.connect(`map-${hostCode}`);
         
         this.conn.on('open', () => {
-          resolve(); // Connection established!
+          resolve(); 
         });
 
-        // Listen for API Responses from the Host
         this.conn.on('data', (data: any) => {
           if (data.type === 'API_RESPONSE' && this.pendingRequests[data.reqId]) {
             if (data.ok) {
@@ -31,16 +31,24 @@ export class GameService {
           }
         });
         
-        this.conn.on('error', reject);
+        this.conn.on('error', (err) => {
+          reject(err);
+        });
       });
     });
   }
 
-  // Internal Helper: Emulates an HTTP fetch over WebRTC
   private static async request(endpoint: string, body: any): Promise<any> {
-    if (!this.conn || !this.conn.open) throw new Error('Not connected to a Host Map.');
+    // Safety check: ensure gameCode is present to auto-connect if needed
+    if ((!this.conn || !this.conn.open) && body.gameCode) {
+      await this.setHost(body.gameCode);
+    }
+
+    if (!this.conn || !this.conn.open) {
+      throw new Error('Not connected to a Host Map.');
+    }
     
-    const reqId = crypto.randomUUID(); // Unique ID for this request
+    const reqId = crypto.randomUUID();
     
     return new Promise((resolve, reject) => {
       this.pendingRequests[reqId] = { resolve, reject };
@@ -52,18 +60,18 @@ export class GameService {
         body
       });
 
-      // Optional: Add a 5-second timeout
       setTimeout(() => {
         if (this.pendingRequests[reqId]) {
           reject(new Error('Request timed out'));
           delete this.pendingRequests[reqId];
         }
-      }, 5000);
+      }, 8000); // Bumped timeout to 8s for slow mobile handshakes
     });
   }
 
   static async connect(code: string, name: string) {
-    if (!this.conn) await this.setHost(code);
+    // Explicitly guarantee connection is established before firing the endpoint
+    await this.setHost(code);
     return this.request('/connect', { gameCode: code, playerName: name });
   }
 
