@@ -273,67 +273,150 @@ const HostMap: React.FC = () => {
           if (data.type === 'API_REQUEST') {
             const { endpoint, reqId, body } = data;
             let responseData = {};
-            
             try {
-              const state = engine.current;
-              
-              // --- ENDPOINT: /connect ---
-              if (endpoint === '/connect') {
-                console.log('connect called.');
-                const { playerName } = body;
-                const hasLoc = !!state.characters[playerName]?.location_id;
-                responseData = { success: true, hasLocation: hasLoc };
-              } 
-              
-              // --- ENDPOINT: /crashland ---
-              else if (endpoint === '/crashland') {
-                console.log('crashland called with: ', body);
-                const { playerName, requestedLocation, playerColor } = body;
-                state.characters[playerName] = { 
-                  color: playerColor || '#ffffff', 
-                  location_id: requestedLocation 
-                };
+                const state = engine.current;
                 
-                // Create isolated node if it doesn't exist
-                if (!state.nodes[requestedLocation]) {
-                  const gId = state.globalGroupCounter++;
-                  state.groups[gId] = { offsetX: window.innerWidth / 2, offsetY: window.innerHeight / 2 };
-                  state.nodes[requestedLocation] = { id: requestedLocation, groupId: gId, lx: 0, ly: 0, gx: 0, gy: 0 };
+                // --- ENDPOINT: /connect ---
+                if (endpoint === '/connect') {
+                  const { playerName } = body;
+                  const hasLoc = !!state.characters[playerName]?.location_id;
+                  responseData = { success: true, hasLocation: hasLoc };
+                } 
+                
+                // --- ENDPOINT: /crashland ---
+                else if (endpoint === '/crashland') {
+                  let { playerName, requestedLocation, playerColor } = body;
+                  
+                  // 1. SAFETY: Prevent null/empty locations from snapping everyone to a shared "" node
+                  if (!requestedLocation) {
+                    requestedLocation = `${playerName}_dropzone`; 
+                  }
+    
+                  state.characters[playerName] = { 
+                    color: playerColor || '#ffffff', 
+                    location_id: requestedLocation 
+                  };
+                  
+                  // 2. Create isolated node if it doesn't exist
+                  if (!state.nodes[requestedLocation]) {
+                    const gId = state.globalGroupCounter++;
+                    
+                    // Add a random spread so players don't stack on top of each other
+                    const spreadX = (Math.random() - 0.5) * 300;
+                    const spreadY = (Math.random() - 0.5) * 300;
+                    
+                    state.groups[gId] = { 
+                      offsetX: (window.innerWidth / 2) + spreadX - state.camera.x, 
+                      offsetY: (window.innerHeight / 2) + spreadY - state.camera.y 
+                    };
+                    
+                    state.nodes[requestedLocation] = { 
+                      id: requestedLocation, 
+                      groupId: gId, 
+                      lx: 0, ly: 0, gx: 0, gy: 0 
+                    };
+                  }
+                  
                   updateGlobalCoords();
+                  responseData = { confirmedLocation: requestedLocation };
+                  draw();
+                } 
+                
+                // --- ENDPOINT: /move ---
+                else if (endpoint === '/move') {
+                  const { playerName, currentLocation, targetLocation, direction, specialId } = body;
+                  
+                  // SAFETY: Ensure we know where they are starting from
+                  const fromId = currentLocation || state.characters[playerName]?.location_id;
+                  
+                  if (!fromId || !targetLocation) {
+                    throw new Error(`Invalid move: Missing fromId (${fromId}) or targetLocation (${targetLocation})`);
+                  }
+    
+                  processMove({
+                    charName: playerName,
+                    fromId: fromId,
+                    dir: direction,
+                    toId: targetLocation,
+                    specialId: specialId || (direction.includes('Special') ? targetLocation : '')
+                  });
+                  
+                  responseData = { newLocation: targetLocation };
                 }
-                responseData = { confirmedLocation: requestedLocation };
-                draw();
-              } 
+    
+                // --- ENDPOINT: /resources ---
+                else if (endpoint === '/resources') {
+                  console.log(`Resources synced for ${body.playerName}:`, body.resources);
+                  responseData = { success: true };
+                }
+    
+                conn.send({ type: 'API_RESPONSE', reqId, ok: true, data: responseData });
+    
+              } catch (error: any) {
+                console.error("[Host API] Error:", error.message);
+                conn.send({ type: 'API_RESPONSE', reqId, ok: false, error: error.message });
+              }
+            
+            // try {
+            //   const state = engine.current;
               
-              // --- ENDPOINT: /move ---
-            else if (endpoint === '/move') {
-                console.log('move called.');
-                const { playerName, currentLocation, targetLocation, direction, specialId } = body;
+            //   // --- ENDPOINT: /connect ---
+            //   if (endpoint === '/connect') {
+            //     console.log('connect called.');
+            //     const { playerName } = body;
+            //     const hasLoc = !!state.characters[playerName]?.location_id;
+            //     responseData = { success: true, hasLocation: hasLoc };
+            //   } 
+              
+            //   // --- ENDPOINT: /crashland ---
+            //   else if (endpoint === '/crashland') {
+            //     console.log('crashland called with: ', body);
+            //     const { playerName, requestedLocation, playerColor } = body;
+            //     state.characters[playerName] = { 
+            //       color: playerColor || '#ffffff', 
+            //       location_id: requestedLocation 
+            //     };
                 
-                processMove({
-                  charName: playerName,
-                  fromId: currentLocation || state.characters[playerName]?.location_id,
-                  dir: direction,
-                  toId: targetLocation,
-                  specialId: specialId || (direction.includes('Special') ? targetLocation : '')
-                });
+            //     // Create isolated node if it doesn't exist
+            //     if (!state.nodes[requestedLocation]) {
+            //       const gId = state.globalGroupCounter++;
+            //       state.groups[gId] = { offsetX: window.innerWidth / 2, offsetY: window.innerHeight / 2 };
+            //       state.nodes[requestedLocation] = { id: requestedLocation, groupId: gId, lx: 0, ly: 0, gx: 0, gy: 0 };
+            //       updateGlobalCoords();
+            //     }
+            //     responseData = { confirmedLocation: requestedLocation };
+            //     draw();
+            //   } 
+              
+            //   // --- ENDPOINT: /move ---
+            // else if (endpoint === '/move') {
+            //     console.log('move called.');
+            //     const { playerName, currentLocation, targetLocation, direction, specialId } = body;
                 
-                responseData = { newLocation: targetLocation };
-              }
+            //     processMove({
+            //       charName: playerName,
+            //       fromId: currentLocation || state.characters[playerName]?.location_id,
+            //       dir: direction,
+            //       toId: targetLocation,
+            //       specialId: specialId || (direction.includes('Special') ? targetLocation : '')
+            //     });
+                
+            //     responseData = { newLocation: targetLocation };
+            //   }
   
-              // --- ENDPOINT: /resources ---
-              else if (endpoint === '/resources') {
-                // Store resources in state if needed
-                console.log(`Resources synced for ${body.playerName}:`, body.resources);
-                responseData = { success: true };
-              }
+            //   // --- ENDPOINT: /resources ---
+            //   else if (endpoint === '/resources') {
+            //     // Store resources in state if needed
+            //     console.log(`Resources synced for ${body.playerName}:`, body.resources);
+            //     responseData = { success: true };
+            //   }
   
-              // Send standard response back to the client
-              conn.send({ type: 'API_RESPONSE', reqId, ok: true, data: responseData });
+            //   // Send standard response back to the client
+            //   conn.send({ type: 'API_RESPONSE', reqId, ok: true, data: responseData });
   
-            } catch (error: any) {
-              conn.send({ type: 'API_RESPONSE', reqId, ok: false, error: error.message });
-            }
+            // } catch (error: any) {
+            //   conn.send({ type: 'API_RESPONSE', reqId, ok: false, error: error.message });
+            // }
           }
         });
       });
