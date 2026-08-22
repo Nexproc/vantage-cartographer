@@ -417,7 +417,13 @@ const HostMap: React.FC = () => {
   }, [mode, penColor]);
 
   const cursorClass = mode === 'draw' ? 'cursor-crosshair' : mode === 'erase' ? 'cursor-cell' : 'cursor-grab active:cursor-grabbing';
-  const qrConnectUrl = `${window.location.origin}/mobile?code=${roomCode}`;
+  // This dynamically takes your current URL (e.g., https://username.github.io/vantage-cartographer/)
+  // and appends the controller subfolder and query string.
+  const basePath = window.location.pathname.endsWith('/') 
+    ? window.location.pathname 
+    : `${window.location.pathname}/`;
+    
+  const qrConnectUrl = `${window.location.origin}${basePath}controller/?code=${roomCode}`;
 
   return (
     <div className="w-screen h-screen relative">
