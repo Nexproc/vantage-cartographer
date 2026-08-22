@@ -334,7 +334,7 @@ const HostMap: React.FC = () => {
                 
                 // --- ENDPOINT: /move ---
                 else if (endpoint === '/move') {
-                  const { playerName, currentLocation, targetLocation, direction, specialId } = body;
+                  const { playerName, currentLocation, targetLocation, direction } = body;
                   
                   // SAFETY: Ensure we know where they are starting from
                   const fromId = currentLocation || state.characters[playerName]?.location_id;
@@ -348,7 +348,6 @@ const HostMap: React.FC = () => {
                     fromId: fromId,
                     dir: direction,
                     toId: targetLocation,
-                    specialId: specialId || (direction.includes('Special') ? targetLocation : '')
                   });
                   
                   responseData = { newLocation: targetLocation };
