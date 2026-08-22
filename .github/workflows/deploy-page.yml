@@ -26,6 +26,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
+          working-directory: ./host-map
+          node-version: 24
+          cache: 'npm'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          working-directory: ./controller
           node-version: 24
           cache: 'npm'
 
