@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Game Client PWA</title>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#121212">
+    <style>
+        :root {
+            --bg-color: #121212;
+            --text-color: #f0f0f0;
+            --error-color: #ff5252;
+            --border-color: #ffffff;
+            
+            --res-red: #ff4a4a;
+            --res-blue: #4a90e2;
+            --res-green: #50e3c2;
+            --res-yellow: #f5a623;
+            --res-purple: #bd10e0;
+            --res-orange: #ff8c00;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            user-select: none; /* Prevent text selection on mobile taps */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Mobile App Container */
+        #app {
+            width: 100%;
+            max-width: 400px;
+            height: 100vh;
+            max-height: 850px;
+            position: relative;
+            border: 2px solid #333;
+            border-radius: 20px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        .screen {
+            display: none;
+            flex-direction: column;
+            height: 100%;
+            width: 100%;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .screen.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Typography & Inputs */
+        h2 { font-weight: normal; margin-bottom: 10px; font-size: 1.2rem; }
+        
+        input {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 1rem;
+            margin-bottom: 20px;
+            width: 100%;
+            text-align: center;
+            outline: none;
+        }
+        
+        input:focus { border-color: #888; }
+        
+        input[type="color"] {
+            padding: 0;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+        button {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-color);
+            padding: 12px 20px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        button:active { background: rgba(255,255,255,0.1); }
+        
+        .btn-outline-red { border-color: var(--error-color); color: var(--error-color); }
+
+        .error-msg {
+            color: var(--error-color);
+            text-align: center;
+            margin-bottom: 20px;
+            min-height: 40px;
+            visibility: hidden;
+        }
+
+        /* Screen Specifics */
+        .spacer { flex-grow: 1; }
+
+        .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        
+        /* Normal Screen Header */
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;}
+        .header button { width: auto; padding: 5px 15px; border-radius: 15px; font-size: 0.9rem;}
+        .player-info { margin-bottom: 20px; }
+        #display-name { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px;}
+        
+        /* Game Layout: Resources and Compass */
+        .game-area {
+            display: flex;
+            flex-direction: row;
+            justify-content: space-between;
+            align-items: center;
+            flex-grow: 1;
+        }
+
+        /* Resources */
+        .resources-col { display: flex; flex-direction: column; gap: 10px; }
+        .resource-row { display: flex; align-items: center; gap: 10px; }
+        .res-icon {
+            width: 30px; height: 30px; border-radius: 50%;
+            border: 1px solid;
+            display: flex; justify-content: center; align-items: center;
+        }
+        .res-controls {
+            display: flex; flex-direction: column;
+            border: 1px solid #555; border-radius: 10px;
+            overflow: hidden; padding: 2px 5px;
+        }
+        .res-controls span { text-align: center; font-size: 0.9rem; margin: 2px 0; }
+        .res-btn {
+            background: none; border: none; color: white;
+            font-size: 0.8rem; padding: 2px 10px; cursor: pointer;
+        }
+        .res-btn:active { background: #333; }
+
+        /* Resource Colors */
+        .res-red { border-color: var(--res-red); color: var(--res-red); }
+        .res-blue { border-color: var(--res-blue); color: var(--res-blue); }
+        .res-green { border-color: var(--res-green); color: var(--res-green); }
+        .res-yellow { border-color: var(--res-yellow); color: var(--res-yellow); }
+        .res-purple { border-color: var(--res-purple); color: var(--res-purple); }
+        .res-orange { border-color: var(--res-orange); color: var(--res-orange); }
+
+        /* Compass */
+        .compass-col {
+            position: relative;
+            width: 150px; height: 150px;
+        }
+        .compass-btn {
+            position: absolute;
+            background: none; border: 1px solid var(--border-color); color: var(--border-color);
+            width: 30px; height: 30px; border-radius: 5px;
+            display: flex; justify-content: center; align-items: center;
+            font-size: 0.7rem; cursor: pointer;
+        }
+        .compass-btn.selected { background: var(--border-color); color: var(--bg-color); }
+        .dir-n { top: 0; left: 60px; }
+        .dir-ne { top: 15px; right: 15px; }
+        .dir-e { top: 60px; right: 0; }
+        .dir-se { bottom: 15px; right: 15px; }
+        .dir-s { bottom: 0; left: 60px; }
+        .dir-sw { bottom: 15px; left: 15px; }
+        .dir-w { top: 60px; left: 0; }
+        .dir-nw { top: 15px; left: 15px; }
+        .dir-c { top: 60px; left: 60px; border-radius: 50%; }
+
+        /* Bottom Controls */
+        .bottom-controls { display: flex; gap: 10px; margin-top: 20px;}
+        .bottom-controls input { margin-bottom: 0; flex-grow: 1; }
+        .bottom-controls button { width: auto; flex-grow: 1; }
+
+    </style>
+</head>
+<body>
+
+<div id="app">
+    
+    <!-- 1. Connect Screen -->
+    <div id="screen-connect" class="screen active">
+        <div class="spacer"></div>
+        <div id="connect-error" class="error-msg">
+            Game Not Found<br>Start one on Desktop
+        </div>
+        <input type="text" id="game-code" placeholder="Game Code" autocomplete="off">
+        <input type="text" id="player-name" placeholder="Player Name" autocomplete="off">
+        <div class="spacer"></div>
+        <button onclick="attemptConnect()">Connect</button>
+    </div>
+
+    <!-- 2. No Location Screen -->
+    <div id="screen-nolocation" class="screen">
+        <div class="spacer"></div>
+        <div class="row">
+            <h2 id="setup-player-name">Player Name</h2>
+        </div>
+        <div class="row">
+            <h2>Color Picker</h2>
+            <input type="color" id="player-color" value="#50e3c2">
+        </div>
+        <input type="number" id="start-location" placeholder="Start Location (2-4 digits)" pattern="\d{2,4}" min="10" max="9999">
+        <div class="spacer"></div>
+        <button class="btn-outline-red" onclick="crashLand()">Crash Land</button>
+    </div>
+
+    <!-- 3. Normal Screen -->
+    <div id="screen-normal" class="screen">
+        <div class="header">
+            <button onclick="undoAction()">Undo</button>
+        </div>
+        
+        <div class="player-info">
+            <div id="display-name" style="color: #50e3c2;">Player Name</div>
+            <div id="display-location">Location: ###</div>
+        </div>
+
+        <div class="game-area">
+            <!-- Resources Column -->
+            <div class="resources-col" id="resource-container">
+                <!-- Injected via JS -->
+            </div>
+
+            <!-- Compass Column -->
+            <div class="compass-col">
+                <div class="compass-btn dir-n" onclick="selectDirection('N')">N</div>
+                <div class="compass-btn dir-ne" onclick="selectDirection('NE')">NE</div>
+                <div class="compass-btn dir-e" onclick="selectDirection('E')">E</div>
+                <div class="compass-btn dir-se" onclick="selectDirection('SE')">SE</div>
+                <div class="compass-btn dir-s" onclick="selectDirection('S')">S</div>
+                <div class="compass-btn dir-sw" onclick="selectDirection('SW')">SW</div>
+                <div class="compass-btn dir-w" onclick="selectDirection('W')">W</div>
+                <div class="compass-btn dir-nw" onclick="selectDirection('NW')">NW</div>
+                <div class="compass-btn dir-c" onclick="selectDirection('C')">★</div>
+            </div>
+        </div>
+
+        <div class="bottom-controls">
+            <input type="number" id="target-location" placeholder="###" pattern="\d{2,4}">
+            <button onclick="submitMove()">Move</button>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    /* ==============================
+       STATE MANAGEMENT & MOCK API
+       ============================== */
+    
+    const API_BASE = '/api'; // Replace with actual server URL
+    
+    let gameState = {
+        code: '',
+        name: '',
+        color: '#50e3c2',
+        location: null,
+        direction: null,
+        resources: {
+            red: 0, blue: 0, green: 0, yellow: 0, purple: 0, orange: 0
+        }
+    };
+
+    // Navigation Helper
+    function showScreen(screenId) {
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+    }
+
+    /* ==============================
+       CONNECT SCREEN LOGIC
+       ============================== */
+    async function attemptConnect() {
+        const code = document.getElementById('game-code').value.trim();
+        const name = document.getElementById('player-name').value.trim();
+        const errorEl = document.getElementById('connect-error');
+
+        if (!code || !name) return;
+
+        try {
+            // MOCK GET REQUEST (Replace with actual fetch)
+            // const response = await fetch(`${API_BASE}/connect?code=${code}&name=${name}`);
+            // const data = await response.json();
+            
+            // Simulating network delay and response
+            const data = await new Promise(resolve => setTimeout(() => {
+                // Mock: Type "error" in game code to see the error state from the mockup
+                if (code.toLowerCase() === 'error') {
+                    resolve({ success: false });
+                } else {
+                    resolve({ success: true, hasLocation: false });
+                }
+            }, 300));
+
+            if (!data.success) {
+                errorEl.style.visibility = 'visible';
+            } else {
+                errorEl.style.visibility = 'hidden';
+                gameState.code = code;
+                gameState.name = name;
+                document.getElementById('setup-player-name').innerText = name;
+                
+                if (data.hasLocation) {
+                    showScreen('screen-normal');
+                    updateNormalUI();
+                } else {
+                    showScreen('screen-nolocation');
+                }
+            }
+        } catch (e) {
+            console.error("Connection failed", e);
+        }
+    }
+
+    /* ==============================
+       NO LOCATION SCREEN LOGIC
+       ============================== */
+    async function crashLand() {
+        const locInput = document.getElementById('start-location').value;
+        const colorInput = document.getElementById('player-color').value;
+
+        // Validate 2-4 digits
+        if (!/^\d{2,4}$/.test(locInput)) {
+            alert("Location ID must be a 2 to 4 digit number.");
+            return;
+        }
+
+        gameState.color = colorInput;
+        
+        try {
+            // MOCK POST REQUEST
+            /*
+            const response = await fetch(`${API_BASE}/crashland`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ location: locInput, color: colorInput })
+            });
+            const data = await response.json();
+            gameState.location = data.location; // Server authoritative
+            */
+
+            // Simulation
+            const data = await new Promise(resolve => setTimeout(() => {
+                resolve({ location: locInput });
+            }, 300));
+
+            gameState.location = data.location;
+            updateNormalUI();
+            showScreen('screen-normal');
+        } catch (e) {
+            console.error("Crash land failed", e);
+        }
+    }
+
+    /* ==============================
+       NORMAL SCREEN LOGIC
+       ============================== */
+
+    // Initialization
+    const resColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+    const resContainer = document.getElementById('resource-container');
+
+    resColors.forEach(color => {
+        const row = document.createElement('div');
+        row.className = 'resource-row';
+        row.innerHTML = `
+            <div class="res-icon res-${color}"></div>
+            <div class="res-controls res-${color}">
+                <button class="res-btn" onclick="adjustResource('${color}', 1)">▲</button>
+                <span id="val-${color}">0</span>
+                <button class="res-btn" onclick="adjustResource('${color}', -1)">▼</button>
+            </div>
+        `;
+        resContainer.appendChild(row);
+    });
+
+    function updateNormalUI() {
+        document.getElementById('display-name').innerText = gameState.name;
+        document.getElementById('display-name').style.color = gameState.color;
+        document.getElementById('display-location').innerText = `Location: ${gameState.location || '###'}`;
+        
+        resColors.forEach(color => {
+            document.getElementById(`val-${color}`).innerText = gameState.resources[color];
+        });
+    }
+
+    /* RESOURCE SYNC LOGIC (Strict Debounce & Ack Control) */
+    let resourceSyncTimer = null;
+    let isAwaitingResourceAck = false;
+    let pendingResourceSync = false;
+
+    function adjustResource(color, delta) {
+        gameState.resources[color] = Math.max(0, gameState.resources[color] + delta);
+        document.getElementById(`val-${color}`).innerText = gameState.resources[color];
+        triggerResourceSyncCountdown();
+    }
+
+    function triggerResourceSyncCountdown() {
+        // Clear previous timer
+        if (resourceSyncTimer) {
+            clearTimeout(resourceSyncTimer);
+        }
+        
+        // "only be fired 1 second after the user has finished their resource inputs"
+        resourceSyncTimer = setTimeout(() => {
+            attemptResourceSync();
+        }, 1000);
+    }
+
+    async function attemptResourceSync() {
+        // "(and after the last ack from the server) to prevent too many parallel... racing"
+        if (isAwaitingResourceAck) {
+            pendingResourceSync = true;
+            return;
+        }
+
+        isAwaitingResourceAck = true;
+
+        try {
+            // MOCK POST REQUEST
+            /*
+            await fetch(`${API_BASE}/resources`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ resources: gameState.resources })
+            });
+            */
+            // Simulation
+            await new Promise(resolve => setTimeout(resolve, 400));
+            console.log("Resources synced to server:", gameState.resources);
+        } catch (e) {
+            console.error("Resource sync failed", e);
+        } finally {
+            isAwaitingResourceAck = false;
+            // If user adjusted resources while we were waiting for the ACK, fire again.
+            if (pendingResourceSync) {
+                pendingResourceSync = false;
+                attemptResourceSync();
+            }
+        }
+    }
+
+    /* COMPASS & MOVEMENT LOGIC */
+    function selectDirection(dir) {
+        gameState.direction = dir;
+        document.querySelectorAll('.compass-btn').forEach(b => b.classList.remove('selected'));
+        // Find element that contains 'dir-' + dir.toLowerCase()
+        const targetClass = `.dir-${dir.toLowerCase()}`;
+        document.querySelector(targetClass).classList.add('selected');
+    }
+
+    async function submitMove() {
+        const targetLoc = document.getElementById('target-location').value;
+        
+        if (!gameState.direction) {
+            alert("Please select a direction on the compass.");
+            return;
+        }
+        if (!/^\d{2,4}$/.test(targetLoc)) {
+            alert("Target Location must be a 2 to 4 digit number.");
+            return;
+        }
+
+        try {
+            // MOCK POST REQUEST
+            /*
+            const response = await fetch(`${API_BASE}/move`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    direction: gameState.direction, 
+                    target: targetLoc 
+                })
+            });
+            const data = await response.json();
+            // Client location updates AFTER server confirms
+            gameState.location = data.location; 
+            */
+
+            // Simulation
+            const data = await new Promise(resolve => setTimeout(() => {
+                resolve({ location: targetLoc });
+            }, 500));
+
+            // Per instructions: "The location should not update on the client until the server confirms the move"
+            gameState.location = data.location;
+            updateNormalUI();
+            
+            // Reset Move UI
+            document.getElementById('target-location').value = '';
+            document.querySelectorAll('.compass-btn').forEach(b => b.classList.remove('selected'));
+            gameState.direction = null;
+
+        } catch (e) {
+            console.error("Move failed", e);
+        }
+    }
+
+    function undoAction() {
+        // Implement specific undo POST here if needed
+        console.log("Undo requested");
+    }
+
+</script>
+</body>
+</html>

@@ -1,0 +1,193 @@
+:root {
+    --bg-color: #121212;
+    --text-color: #f0f0f0;
+    --error-color: #ff5252;
+    --border-color: #ffffff;
+    
+    --res-red: #ff4a4a;
+    --res-blue: #4a90e2;
+    --res-green: #50e3c2;
+    --res-yellow: #f5a623;
+    --res-purple: #bd10e0;
+    --res-orange: #ff8c00;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    user-select: none; /* Prevent text selection on mobile taps */
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+/* Mobile App Container */
+#app {
+    width: 100%;
+    max-width: 400px;
+    height: 100vh;
+    max-height: 850px;
+    position: relative;
+    border: 2px solid #333;
+    border-radius: 20px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+}
+
+.screen {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+    animation: fadeIn 0.3s ease;
+}
+
+.screen.active {
+    display: flex;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Typography & Inputs */
+h2 { font-weight: normal; margin-bottom: 10px; font-size: 1.2rem; }
+
+input {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 12px 20px;
+    border-radius: 25px;
+    font-size: 1rem;
+    margin-bottom: 20px;
+    width: 100%;
+    text-align: center;
+    outline: none;
+}
+
+input:focus { border-color: #888; }
+
+input[type="color"] {
+    padding: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+}
+input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+input[type="color"]::-webkit-color-swatch { border: none; border-radius: 50%; }
+
+button {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-color);
+    padding: 12px 20px;
+    border-radius: 25px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+    width: 100%;
+}
+
+button:active { background: rgba(255,255,255,0.1); }
+
+.btn-outline-red { border-color: var(--error-color); color: var(--error-color); }
+
+.error-msg {
+    color: var(--error-color);
+    text-align: center;
+    margin-bottom: 20px;
+    min-height: 40px;
+    visibility: hidden;
+}
+
+/* Screen Specifics */
+.spacer { flex-grow: 1; }
+
+.row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+
+/* Normal Screen Header */
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;}
+.header button { width: auto; padding: 5px 15px; border-radius: 15px; font-size: 0.9rem;}
+.player-info { margin-bottom: 20px; }
+#display-name { font-size: 1.2rem; font-weight: bold; margin-bottom: 5px;}
+
+/* Game Layout: Resources and Compass */
+.game-area {
+    display: flex;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+    flex-grow: 1;
+}
+
+/* Resources */
+.resources-col { display: flex; flex-direction: column; gap: 10px; }
+.resource-row { display: flex; align-items: center; gap: 10px; }
+.res-icon {
+    width: 30px; height: 30px; border-radius: 50%;
+    border: 1px solid;
+    display: flex; justify-content: center; align-items: center;
+}
+.res-controls {
+    display: flex; flex-direction: column;
+    border: 1px solid #555; border-radius: 10px;
+    overflow: hidden; padding: 2px 5px;
+}
+.res-controls span { text-align: center; font-size: 0.9rem; margin: 2px 0; }
+.res-btn {
+    background: none; border: none; color: white;
+    font-size: 0.8rem; padding: 2px 10px; cursor: pointer;
+}
+.res-btn:active { background: #333; }
+
+/* Resource Colors */
+.res-red { border-color: var(--res-red); color: var(--res-red); }
+.res-blue { border-color: var(--res-blue); color: var(--res-blue); }
+.res-green { border-color: var(--res-green); color: var(--res-green); }
+.res-yellow { border-color: var(--res-yellow); color: var(--res-yellow); }
+.res-purple { border-color: var(--res-purple); color: var(--res-purple); }
+.res-orange { border-color: var(--res-orange); color: var(--res-orange); }
+
+/* Compass */
+.compass-col {
+    position: relative;
+    width: 150px; height: 150px;
+}
+.compass-btn {
+    position: absolute;
+    background: none; border: 1px solid var(--border-color); color: var(--border-color);
+    width: 30px; height: 30px; border-radius: 5px;
+    display: flex; justify-content: center; align-items: center;
+    font-size: 0.7rem; cursor: pointer;
+}
+.compass-btn.selected { background: var(--border-color); color: var(--bg-color); }
+.dir-n { top: 0; left: 60px; }
+.dir-ne { top: 15px; right: 15px; }
+.dir-e { top: 60px; right: 0; }
+.dir-se { bottom: 15px; right: 15px; }
+.dir-s { bottom: 0; left: 60px; }
+.dir-sw { bottom: 15px; left: 15px; }
+.dir-w { top: 60px; left: 0; }
+.dir-nw { top: 15px; left: 15px; }
+.dir-c { top: 60px; left: 60px; border-radius: 50%; }
+
+/* Bottom Controls */
+.bottom-controls { display: flex; gap: 10px; margin-top: 20px;}
+.bottom-controls input { margin-bottom: 0; flex-grow: 1; }
+.bottom-controls button { width: auto; flex-grow: 1; }

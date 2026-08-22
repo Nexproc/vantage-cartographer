@@ -1,0 +1,3 @@
+// Reusable Tailwind Class Strings
+export const clsInput = "bg-transparent border border-white text-[#f0f0f0] py-3 px-5 rounded-full text-base mb-5 w-full text-center outline-none focus:border-[#888]";
+export const clsButton = "bg-transparent border border-white text-[#f0f0f0] py-3 px-5 rounded-full text-base cursor-pointer transition-colors duration-200 w-full active:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed";
