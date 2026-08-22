@@ -8,7 +8,14 @@ const HostMap: React.FC = () => {
   const [showQR, setShowQR] = useState<boolean>(false);
   const [roomCode, setRoomCode] = useState<string>('----');
   const [isLocalhost, setIsLocalhost] = useState<boolean>(false);
-  const [mode, setMode] = useState<'drag' | 'draw' | 'erase'>('drag');
+    // 1. Keep your existing state
+    const [mode, setMode] = useState<'drag' | 'draw' | 'erase'>('drag');
+
+    // 2. Add a Ref to mirror it for the Canvas event listener
+    const modeRef = useRef(mode);
+    useEffect(() => {
+        modeRef.current = mode;
+    }, [mode]);
   const [penColor, setPenColor] = useState<string>('#ffffff');
   
   // Game State Ref (Mutable to avoid React re-renders killing 60fps canvas)
@@ -199,8 +206,12 @@ const HostMap: React.FC = () => {
     for (const id in state.nodes) {
       const n = state.nodes[id]; 
       const g = state.groups[n.groupId];
-      n.gx = g.offsetX + n.lx; 
-      n.gy = g.offsetY + n.ly;
+      
+      // FIX: Ensure the group exists before calculating math to prevent NaN drag locks
+      if (g) {
+        n.gx = g.offsetX + n.lx; 
+        n.gy = g.offsetY + n.ly;
+      }
     }
   };
 
@@ -377,48 +388,49 @@ const HostMap: React.FC = () => {
     const state = engine.current;
 
     const handleDown = (e: MouseEvent) => {
-        const wp = { x: e.clientX - state.camera.x, y: e.clientY - state.camera.y }; 
-        state.lastMouse = { x: e.clientX, y: e.clientY };
-        
-        if (mode === 'draw' || mode === 'erase') {
-          state.currentStroke = { color: penColor, isEraser: mode === 'erase', points: [wp] };
-          state.drawings.push(state.currentStroke);
-        } else if (mode === 'drag') {
-          // FIX: Increased hit radius from 20 to 50 to easily encompass the node and its text label
-          const clickedNode = Object.values(state.nodes).find(n => Math.hypot(n.gx - wp.x, n.gy - wp.y) < 50);
-          
-          // Ensure the node was found AND its parent group exists in memory
-          if (clickedNode && state.groups[clickedNode.groupId]) {
-            console.log("Clicked on node: ", clickedNode)
-            state.draggedGroup = state.groups[clickedNode.groupId]; 
-            console.log("Clicked on node: ", clickedNode, " - Dragging group: ", clickedNode.groupId)
-          } else {
-            console.log("camera dragged, no node found")
-            state.isDraggingCamera = true;
-          }
+        // FIX: Use offsetX/Y to lock coordinates purely to the canvas element's bounds
+        const wp = { x: e.offsetX - state.camera.x, y: e.offsetY - state.camera.y };
+        state.lastMouse = { x: e.offsetX, y: e.offsetY };
+    
+        if (modeRef.current === 'draw' || modeRef.current === 'erase') {
+            state.currentStroke = { color: penColor, isEraser: modeRef.current === 'erase', points: [wp] };
+            state.drawings.push(state.currentStroke);
+        } else if (modeRef.current === 'drag') {
+            const clickedNode = Object.values(state.nodes).find(n => Math.hypot(n.gx - wp.x, n.gy - wp.y) < 50);
+    
+            if (clickedNode && state.groups[clickedNode.groupId]) {
+                console.log("Clicked on node: ", clickedNode);
+                state.draggedGroup = state.groups[clickedNode.groupId];
+            } else {
+                console.log("camera dragged, no node found");
+                state.isDraggingCamera = true;
+            }
         }
-      };
+    };
     
     const handleMove = (e: MouseEvent) => {
-      const mp = { x: e.clientX, y: e.clientY }; 
-      const wp = { x: e.clientX - state.camera.x, y: e.clientY - state.camera.y };
-      const dx = mp.x - state.lastMouse.x; 
-      const dy = mp.y - state.lastMouse.y;
-      
-      if ((mode === 'draw' || mode === 'erase') && state.currentStroke) {
-        state.currentStroke.points.push(wp); draw();
-      } else if (mode === 'drag') {
-        if (state.draggedGroup) { 
-          state.draggedGroup.offsetX += dx; 
-          state.draggedGroup.offsetY += dy; 
-          updateGlobalCoords(); draw(); 
-        } 
-        else if (state.isDraggingCamera) { 
-          state.camera.x += dx; 
-          state.camera.y += dy; draw(); 
+        // FIX: Match the offset usage here as well
+        const mp = { x: e.offsetX, y: e.offsetY };
+        const wp = { x: e.offsetX - state.camera.x, y: e.offsetY - state.camera.y };
+        const dx = mp.x - state.lastMouse.x;
+        const dy = mp.y - state.lastMouse.y;
+    
+        if ((modeRef.current === 'draw' || modeRef.current === 'erase') && state.currentStroke) {
+            state.currentStroke.points.push(wp);
+            draw();
+        } else if (modeRef.current === 'drag') {
+            if (state.draggedGroup) {
+                state.draggedGroup.offsetX += dx;
+                state.draggedGroup.offsetY += dy;
+                updateGlobalCoords();
+                draw();
+            } else if (state.isDraggingCamera) {
+                state.camera.x += dx;
+                state.camera.y += dy;
+                draw();
+            }
         }
-      }
-      state.lastMouse = mp;
+        state.lastMouse = mp;
     };
 
     const handleUp = () => { 
