@@ -80,7 +80,8 @@ export class GameService {
   }
 
   static async move(code: string, name: string, currentLoc: string | null, targetLoc: string, direction: Direction) {
-    return this.request('/move', { gameCode: code, playerName: name, currentLocation: currentLoc, targetLocation: targetLoc, direction });
+    const payloadDir = direction === 'C' ? 'Special' : direction;
+    return this.request('/move', { gameCode: code, playerName: name, currentLocation: currentLoc, targetLocation: targetLoc, payloadDir });
   }
 
   static async syncResources(code: string, name: string, resources: Resources) {
