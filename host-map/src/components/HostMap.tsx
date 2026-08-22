@@ -356,67 +356,6 @@ const HostMap: React.FC = () => {
                 console.error("[Host API] Error:", error.message);
                 conn.send({ type: 'API_RESPONSE', reqId, ok: false, error: error.message });
               }
-            
-            // try {
-            //   const state = engine.current;
-              
-            //   // --- ENDPOINT: /connect ---
-            //   if (endpoint === '/connect') {
-            //     console.log('connect called.');
-            //     const { playerName } = body;
-            //     const hasLoc = !!state.characters[playerName]?.location_id;
-            //     responseData = { success: true, hasLocation: hasLoc };
-            //   } 
-              
-            //   // --- ENDPOINT: /crashland ---
-            //   else if (endpoint === '/crashland') {
-            //     console.log('crashland called with: ', body);
-            //     const { playerName, requestedLocation, playerColor } = body;
-            //     state.characters[playerName] = { 
-            //       color: playerColor || '#ffffff', 
-            //       location_id: requestedLocation 
-            //     };
-                
-            //     // Create isolated node if it doesn't exist
-            //     if (!state.nodes[requestedLocation]) {
-            //       const gId = state.globalGroupCounter++;
-            //       state.groups[gId] = { offsetX: window.innerWidth / 2, offsetY: window.innerHeight / 2 };
-            //       state.nodes[requestedLocation] = { id: requestedLocation, groupId: gId, lx: 0, ly: 0, gx: 0, gy: 0 };
-            //       updateGlobalCoords();
-            //     }
-            //     responseData = { confirmedLocation: requestedLocation };
-            //     draw();
-            //   } 
-              
-            //   // --- ENDPOINT: /move ---
-            // else if (endpoint === '/move') {
-            //     console.log('move called.');
-            //     const { playerName, currentLocation, targetLocation, direction, specialId } = body;
-                
-            //     processMove({
-            //       charName: playerName,
-            //       fromId: currentLocation || state.characters[playerName]?.location_id,
-            //       dir: direction,
-            //       toId: targetLocation,
-            //       specialId: specialId || (direction.includes('Special') ? targetLocation : '')
-            //     });
-                
-            //     responseData = { newLocation: targetLocation };
-            //   }
-  
-            //   // --- ENDPOINT: /resources ---
-            //   else if (endpoint === '/resources') {
-            //     // Store resources in state if needed
-            //     console.log(`Resources synced for ${body.playerName}:`, body.resources);
-            //     responseData = { success: true };
-            //   }
-  
-            //   // Send standard response back to the client
-            //   conn.send({ type: 'API_RESPONSE', reqId, ok: true, data: responseData });
-  
-            // } catch (error: any) {
-            //   conn.send({ type: 'API_RESPONSE', reqId, ok: false, error: error.message });
-            // }
           }
         });
       });
@@ -438,18 +377,27 @@ const HostMap: React.FC = () => {
     const state = engine.current;
 
     const handleDown = (e: MouseEvent) => {
-      const wp = { x: e.clientX - state.camera.x, y: e.clientY - state.camera.y }; 
-      state.lastMouse = { x: e.clientX, y: e.clientY };
-      
-      if (mode === 'draw' || mode === 'erase') {
-        state.currentStroke = { color: penColor, isEraser: mode === 'erase', points: [wp] };
-        state.drawings.push(state.currentStroke);
-      } else if (mode === 'drag') {
-        const clickedNode = Object.values(state.nodes).find(n => Math.hypot(n.gx - wp.x, n.gy - wp.y) < 20);
-        if (clickedNode) state.draggedGroup = state.groups[clickedNode.groupId]; 
-        else state.isDraggingCamera = true;
-      }
-    };
+        const wp = { x: e.clientX - state.camera.x, y: e.clientY - state.camera.y }; 
+        state.lastMouse = { x: e.clientX, y: e.clientY };
+        
+        if (mode === 'draw' || mode === 'erase') {
+          state.currentStroke = { color: penColor, isEraser: mode === 'erase', points: [wp] };
+          state.drawings.push(state.currentStroke);
+        } else if (mode === 'drag') {
+          // FIX: Increased hit radius from 20 to 50 to easily encompass the node and its text label
+          const clickedNode = Object.values(state.nodes).find(n => Math.hypot(n.gx - wp.x, n.gy - wp.y) < 50);
+          
+          // Ensure the node was found AND its parent group exists in memory
+          if (clickedNode && state.groups[clickedNode.groupId]) {
+            console.log("Clicked on node: ", clickedNode)
+            state.draggedGroup = state.groups[clickedNode.groupId]; 
+            console.log("Clicked on node: ", clickedNode, " - Dragging group: ", clickedNode.groupId)
+          } else {
+            console.log("camera dragged, no node found")
+            state.isDraggingCamera = true;
+          }
+        }
+      };
     
     const handleMove = (e: MouseEvent) => {
       const mp = { x: e.clientX, y: e.clientY }; 
