@@ -131,9 +131,8 @@ const HostMap: React.FC = () => {
   };
 
   const processMove = (moveData: MovePayload) => {
-    let { charName, fromId, dir, toId, specialId } = moveData;
+    let { charName, fromId, dir, toId } = moveData;
     const state = engine.current;
-    if (dir === 'Special') dir = 'Special_' + specialId;
     
     if (!state.mapAdjacency[fromId]) state.mapAdjacency[fromId] = [];
     const existingEdge = state.mapAdjacency[fromId].find(e => e.id === toId && e.dir === dir);

@@ -53,7 +53,6 @@ export interface Point {
     fromId: string;
     dir: string;
     toId: string;
-    specialId: string;
   }
   
   export interface PeerMessage {
