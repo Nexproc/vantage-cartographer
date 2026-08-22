@@ -420,11 +420,11 @@ const HostMap: React.FC = () => {
   // This dynamically takes your current URL (e.g., https://username.github.io/vantage-cartographer/)
   // and appends the controller subfolder and query string.
   // Dynamically points to the controller folder relative to the host's base path
-  const hostPath = window.location.pathname.endsWith('/') 
+  const hostPath = (window.location.pathname.endsWith('/') 
     ? window.location.pathname 
-    : `${window.location.pathname}/`;
+    : `${window.location.pathname}/`).replace("host-map", "controller");
     
-  const qrConnectUrl = `${window.location.origin}${hostPath}controller/?code=${roomCode}`;
+  const qrConnectUrl = `${window.location.origin}${hostPath}?code=${roomCode}`;
 
   return (
     <div className="w-screen h-screen relative">
