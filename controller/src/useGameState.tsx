@@ -41,7 +41,7 @@ export const useGameState = () => {
     try {
       // Note: Swap with GameService call when API is ready
       // const data = await GameService.crashLand(gameState.code, gameState.name, location, color);
-      await new Promise(r => setTimeout(r, 300)); 
+      await GameService.crashLand(gameState.code, gameState.name, location, color);
       setGameState(prev => ({ ...prev, location, color })); // Use data.confirmedLocation
       setActiveScreen('normal');
     } catch (e) {
@@ -52,8 +52,8 @@ export const useGameState = () => {
   const move = async (targetLoc: string, direction: Direction) => {
     try {
       // Note: Swap with GameService call when API is ready
-      // const data = await GameService.move(gameState.code, gameState.name, gameState.location, targetLoc, direction);
-      await new Promise(r => setTimeout(r, 500));
+      await GameService.move(gameState.code, gameState.name, gameState.location, targetLoc, direction);
+      // await new Promise(r => setTimeout(r, 500));
       setGameState(prev => ({ ...prev, location: targetLoc, direction: direction })); // Use data.newLocation
     } catch (e) {
       console.error(e);
