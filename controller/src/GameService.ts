@@ -1,4 +1,4 @@
-import Peer, { DataConnection } from 'peerjs';
+import Peer, { type DataConnection } from 'peerjs';
 import type { Direction, Resources } from './types';
 
 export class GameService {
