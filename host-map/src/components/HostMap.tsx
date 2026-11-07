@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Peer from 'peerjs';
 import type { GameState, MovePayload } from '../types';
+import { processMove as applyMove, updateGlobalCoords as syncGlobalCoords, DIRS } from '../movement';
 
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -131,87 +132,12 @@ const HostMap: React.FC = () => {
   };
 
   const processMove = (moveData: MovePayload) => {
-    let { charName, fromId, dir, toId } = moveData;
-    const state = engine.current;
-    
-    if (!state.mapAdjacency[fromId]) state.mapAdjacency[fromId] = [];
-    const existingEdge = state.mapAdjacency[fromId].find(e => e.id === toId && e.dir === dir);
-    if (existingEdge) {
-      if (!existingEdge.characters.includes(charName)) existingEdge.characters.push(charName);
-    } else {
-      state.mapAdjacency[fromId].push({ id: toId, dir, characters: [charName] });
-    }
-
-    if (!state.characters[charName]) {
-      const randomColor = '#' + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
-      state.characters[charName] = { color: randomColor, location_id: toId };
-    } else {
-      state.characters[charName].location_id = toId;
-    }
-
-    const isSpecial = dir.startsWith('Special');
-    const DIRS: Record<string, {x: number, y: number}> = { 
-      'N':{x:0,y:-1}, 'S':{x:0,y:1}, 'E':{x:1,y:0}, 'W':{x:-1,y:0}, 
-      'NE':{x:1,y:-1}, 'NW':{x:-1,y:-1}, 'SE':{x:1,y:1}, 'SW':{x:-1,y:1} 
-    };
-    const GRID_SIZE = 80;
-
-    if (!state.nodes[fromId]) {
-      const gId = state.globalGroupCounter++;
-      state.groups[gId] = { offsetX: -state.camera.x + window.innerWidth / 2, offsetY: -state.camera.y + window.innerHeight / 2 };
-      state.nodes[fromId] = { id: fromId, groupId: gId, lx: 0, ly: 0, gx: 0, gy: 0 };
-    }
-
-    if (!state.nodes[toId]) {
-      if (isSpecial) {
-        const gId = state.globalGroupCounter++;
-        state.groups[gId] = { offsetX: state.nodes[fromId].gx + 120, offsetY: state.nodes[fromId].gy + 120 };
-        state.nodes[toId] = { id: toId, groupId: gId, lx: 0, ly: 0, gx: 0, gy: 0 };
-      } else {
-        state.nodes[toId] = { 
-          id: toId, 
-          groupId: state.nodes[fromId].groupId, 
-          lx: state.nodes[fromId].lx + DIRS[dir].x * GRID_SIZE, 
-          ly: state.nodes[fromId].ly + DIRS[dir].y * GRID_SIZE,
-          gx: 0, gy: 0
-        };
-      }
-    } else {
-      if (!isSpecial && state.nodes[fromId].groupId !== state.nodes[toId].groupId) {
-        const targetGroup = state.nodes[fromId].groupId; 
-        const oldGroupId = state.nodes[toId].groupId;
-        const expectedLx = state.nodes[fromId].lx + DIRS[dir].x * GRID_SIZE; 
-        const expectedLy = state.nodes[fromId].ly + DIRS[dir].y * GRID_SIZE;
-        const mergeDx = expectedLx - state.nodes[toId].lx; 
-        const mergeDy = expectedLy - state.nodes[toId].ly;
-        
-        for (const n in state.nodes) { 
-          if (state.nodes[n].groupId === oldGroupId) { 
-            state.nodes[n].groupId = targetGroup; 
-            state.nodes[n].lx += mergeDx; 
-            state.nodes[n].ly += mergeDy; 
-          } 
-        }
-        delete state.groups[oldGroupId];
-      }
-    }
-
-    updateGlobalCoords();
+    applyMove(engine.current, moveData);
     draw();
   };
 
   const updateGlobalCoords = () => {
-    const state = engine.current;
-    for (const id in state.nodes) {
-      const n = state.nodes[id]; 
-      const g = state.groups[n.groupId];
-      
-      // FIX: Ensure the group exists before calculating math to prevent NaN drag locks
-      if (g) {
-        n.gx = g.offsetX + n.lx; 
-        n.gy = g.offsetY + n.ly;
-      }
-    }
+    syncGlobalCoords(engine.current);
   };
 
   // Setup Effect
@@ -225,10 +151,6 @@ const HostMap: React.FC = () => {
     const allNodes = new Set(Object.keys(state.mapAdjacency));
     for (const u in state.mapAdjacency) state.mapAdjacency[u].forEach(e => allNodes.add(e.id));
     
-    const DIRS: Record<string, {x: number, y: number}> = { 
-      'N':{x:0,y:-1}, 'S':{x:0,y:1}, 'E':{x:1,y:0}, 'W':{x:-1,y:0}, 
-      'NE':{x:1,y:-1}, 'NW':{x:-1,y:-1}, 'SE':{x:1,y:1}, 'SW':{x:-1,y:1} 
-    };
     const startPositions = [
       {x: window.innerWidth*0.3, y: window.innerHeight*0.4}, 
       {x: window.innerWidth*0.7, y: window.innerHeight*0.6}, 
