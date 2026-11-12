@@ -3,13 +3,14 @@ import type { GameState, ResourceColor, Direction } from './types';
 import { GameService } from './GameService';
 
 const initialGameState: GameState = {
-  code: '', name: '', color: '#50e3c2', location: null, direction: null,
+  code: '', name: '', color: '#10b981', location: null, direction: null,
   resources: { red: 0, blue: 0, green: 0, yellow: 0, purple: 0, orange: 0 }
 };
 
 export const useGameState = () => {
   const [activeScreen, setActiveScreen] = useState<'connect' | 'setup' | 'normal'>('connect');
   const [gameState, setGameState] = useState<GameState>(initialGameState);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Reference to latest state for async callbacks
   const latestState = useRef(gameState);
@@ -18,45 +19,43 @@ export const useGameState = () => {
   // Sync locks
   const syncLock = useRef({ timer: null as ReturnType<typeof setTimeout> | null, isAwaitingAck: false, pendingSync: false });
 
-  const connect = async (code: string, name: string, host?: string) => {
+  const connect = async (code: string, name: string) => {
+    const cleanCode = code.trim().toUpperCase();
+    const cleanName = name.trim();
     try {
-      // 1. Point the API to the dynamically discovered host, or fallback to the current window
-      const targetHost = host || window.location.origin;
-      GameService.setHost(targetHost);
-  
-      // 2. Make the GET request
-      const data = await GameService.connect(code, name);
-      
-      setGameState(prev => ({ ...prev, code, name }));
+      const data = await GameService.connect(cleanCode, cleanName);
+
+      setGameState(prev => ({ ...prev, code: cleanCode, name: cleanName }));
       setActiveScreen(data.hasLocation ? 'normal' : 'setup');
       return true;
-  
     } catch (e) {
       console.error("Connection failed:", e);
       return false;
     }
   };
 
-  const crashLand = async (location: string, color: string) => {
+  const crashLand = async (location: string, color: string): Promise<boolean> => {
     try {
-      // Note: Swap with GameService call when API is ready
-      // const data = await GameService.crashLand(gameState.code, gameState.name, location, color);
-      await GameService.crashLand(gameState.code, gameState.name, location, color);
-      setGameState(prev => ({ ...prev, location, color })); // Use data.confirmedLocation
+      const data = await GameService.crashLand(gameState.code, gameState.name, location, color);
+      const confirmedLoc = typeof data.confirmedLocation === 'string' ? data.confirmedLocation : location;
+      setGameState(prev => ({ ...prev, location: confirmedLoc, color }));
       setActiveScreen('normal');
+      return true;
     } catch (e) {
       console.error(e);
+      return false;
     }
   };
 
-  const move = async (targetLoc: string, direction: Direction) => {
+  const move = async (targetLoc: string, direction: Direction): Promise<boolean> => {
     try {
-      // Note: Swap with GameService call when API is ready
-      await GameService.move(gameState.code, gameState.name, gameState.location, targetLoc, direction);
-      // await new Promise(r => setTimeout(r, 500));
-      setGameState(prev => ({ ...prev, location: targetLoc, direction: direction })); // Use data.newLocation
+      const data = await GameService.move(gameState.code, gameState.name, gameState.location, targetLoc, direction);
+      const nextLoc = typeof data.newLocation === 'string' ? data.newLocation : targetLoc;
+      setGameState(prev => ({ ...prev, location: nextLoc, direction }));
+      return true;
     } catch (e) {
       console.error(e);
+      return false;
     }
   };
 
@@ -66,8 +65,9 @@ export const useGameState = () => {
       resources: { ...prev.resources, [color]: Math.max(0, prev.resources[color] + delta) }
     }));
 
+    setIsSyncing(true);
     if (syncLock.current.timer) clearTimeout(syncLock.current.timer);
-    syncLock.current.timer = setTimeout(executeResourceSync, 1000);
+    syncLock.current.timer = setTimeout(executeResourceSync, 750);
   };
 
   const executeResourceSync = async () => {
@@ -80,7 +80,6 @@ export const useGameState = () => {
     try {
       const state = latestState.current;
       await GameService.syncResources(state.code, state.name, state.resources);
-      console.log("Resources synced!");
     } catch (e) {
       console.error(e);
     } finally {
@@ -88,9 +87,11 @@ export const useGameState = () => {
       if (syncLock.current.pendingSync) {
         syncLock.current.pendingSync = false;
         executeResourceSync();
+      } else {
+        setIsSyncing(false);
       }
     }
   };
 
-  return { activeScreen, gameState, connect, crashLand, move, adjustResource };
+  return { activeScreen, gameState, isSyncing, connect, crashLand, move, adjustResource };
 };

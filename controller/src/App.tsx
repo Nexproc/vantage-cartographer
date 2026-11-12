@@ -1,222 +1,503 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import type { GameState, ResourceColor, Direction } from './types';
-import { useGameState } from './useGameState'; // Import your new controller
-import { ConnectScreen } from './ConnectScreen'
-import { clsButton, clsInput } from './tailwindComponents';
+import { useGameState } from './useGameState';
+import { ConnectScreen } from './ConnectScreen';
 
 const App: React.FC = () => {
-  // Pull everything from the custom hook!
-  const { activeScreen, gameState, connect, crashLand, move, adjustResource } = useGameState();
+  const { activeScreen, gameState, isSyncing, connect, crashLand, move, adjustResource } = useGameState();
 
   return (
-    <div className="w-full max-w-[400px] h-[100vh] max-h-[850px] relative border-2 border-[#333] rounded-[20px] overflow-y-auto overflow-x-hidden flex flex-col p-5 bg-[#121212]">
-      {activeScreen === 'connect' && (
-        <ConnectScreen onConnect={connect} />
-      )}
+    <main className={`app-shell ${activeScreen === 'normal' ? 'app-shell--wide' : ''}`}>
+      {activeScreen === 'connect' && <ConnectScreen onConnect={connect} />}
       {activeScreen === 'setup' && (
-        <SetupScreen playerName={gameState.name} onCrashLand={crashLand} />
+        <SetupScreen
+          playerName={gameState.name}
+          roomCode={gameState.code}
+          onCrashLand={crashLand}
+        />
       )}
       {activeScreen === 'normal' && (
-        <NormalScreen 
-          gameState={gameState} 
-          onMove={move} 
+        <NormalScreen
+          gameState={gameState}
+          isSyncing={isSyncing}
+          onMove={move}
           onResourceChange={adjustResource}
         />
       )}
-    </div>
+    </main>
   );
 };
 
 // ==========================================
-// SUB-COMPONENTS
+// SETUP / CRASH LANDING SCREEN
 // ==========================================
 
-const SetupScreen: React.FC<{ playerName: string, onCrashLand: (l: string, c: string) => void }> = ({ playerName, onCrashLand }) => {
-  const [color, setColor] = useState('#50e3c2');
-  const [loc, setLoc] = useState('');
+const MARKER_SWATCHES = [
+  { label: 'Emerald', hex: '#10b981' },
+  { label: 'Amber', hex: '#f59e0b' },
+  { label: 'Sky', hex: '#38bdf8' },
+  { label: 'Coral', hex: '#fb7185' },
+  { label: 'Lime', hex: '#a3e635' },
+  { label: 'Tangerine', hex: '#fb923c' },
+  { label: 'Ice', hex: '#e2e8f0' },
+];
 
-  const submit = () => {
+const SetupScreen: React.FC<{
+  playerName: string;
+  roomCode: string;
+  onCrashLand: (location: string, color: string) => Promise<boolean>;
+}> = ({ playerName, roomCode, onCrashLand }) => {
+  const [color, setColor] = useState('#10b981');
+  const [loc, setLoc] = useState('');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     if (!/^\d{2,4}$/.test(loc)) {
-      alert("Location ID must be a 2 to 4 digit number.");
+      setErrorMsg('Starting location must be a 2 to 4 digit card number.');
       return;
     }
-    console.log(loc);
-    onCrashLand(loc, color);
+
+    setErrorMsg(null);
+    setSubmitting(true);
+    const ok = await onCrashLand(loc, color);
+    if (!ok) {
+      setErrorMsg('Could not reach Host Map. Check your connection and try again.');
+    }
+    setSubmitting(false);
   };
 
   return (
-    <div className="flex flex-col h-full w-full animate-fade-in">
-      <div className="flex-grow"></div>
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="font-normal text-[1.2rem] m-0">{playerName}</h2>
+    <section className="screen-view screen-view--centered" aria-labelledby="setup-heading">
+      <div className="status-header">
+        <div className="explorer-identity">
+          <span className="explorer-dot" style={{ backgroundColor: color }} aria-hidden="true" />
+          <div className="explorer-meta">
+            <span className="explorer-name">{playerName}</span>
+            <span className="room-meta">
+              <span className="sync-dot" aria-hidden="true" />
+              ROOM {roomCode}
+            </span>
+          </div>
+        </div>
       </div>
-      <div className="flex items-center justify-between mb-5">
-        <h2 className="font-normal text-[1.2rem] m-0">Color Picker</h2>
-        <input 
-          type="color" value={color} onChange={e => setColor(e.target.value)} 
-          className="w-10 h-10 rounded-full border border-white cursor-pointer p-0 bg-transparent"
-        />
+
+      <header className="brand-header">
+        <h1 id="setup-heading" className="page-title">
+          Crash Landing
+        </h1>
+        <p className="page-subtitle">
+          Pick your explorer marker color and enter the 2–4 digit location where you landed.
+        </p>
+      </header>
+
+      <div className="surface-panel">
+        {errorMsg && (
+          <div id="setup-error-banner" className="inline-banner inline-banner--error" role="alert">
+            <svg className="banner-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
+        <form id="crashland-form" className="form-stack" onSubmit={handleSubmit} noValidate>
+          <div className="field-group">
+            <div className="field-label-row">
+              <span className="field-label">Marker Color</span>
+              <span className="field-hint" style={{ fontFamily: 'var(--font-mono)' }}>
+                {color.toUpperCase()}
+              </span>
+            </div>
+            <div className="swatch-grid" role="group" aria-label="Preset marker colors">
+              {MARKER_SWATCHES.map((swatch) => {
+                const isSelected = color.toLowerCase() === swatch.hex.toLowerCase();
+                return (
+                  <button
+                    key={swatch.hex}
+                    id={`swatch-${swatch.label.toLowerCase()}`}
+                    type="button"
+                    className="swatch-btn"
+                    style={{ backgroundColor: swatch.hex }}
+                    aria-label={swatch.label}
+                    aria-pressed={isSelected}
+                    onClick={() => setColor(swatch.hex)}
+                  />
+                );
+              })}
+              <label className="custom-color-wrap" title="Choose custom color">
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="16" />
+                  <line x1="8" y1="12" x2="16" y2="12" />
+                </svg>
+                <input
+                  id="custom-marker-color"
+                  className="custom-color-input"
+                  type="color"
+                  aria-label="Custom marker color"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="start-location-input" className="field-label">
+              Starting Location
+            </label>
+            <input
+              id="start-location-input"
+              className="text-input text-input--mono"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              placeholder="e.g. 412"
+              enterKeyHint="go"
+              value={loc}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                setLoc(digits);
+                if (errorMsg) setErrorMsg(null);
+              }}
+            />
+            <p className="field-hint">Enter the 2 to 4 digit number printed on your starting card.</p>
+          </div>
+
+          <button
+            id="crashland-submit-btn"
+            type="submit"
+            className="btn btn--amber btn--full"
+            disabled={submitting}
+          >
+            {submitting ? (
+              <>
+                <span className="spinner" aria-hidden="true" />
+                <span>Landing&hellip;</span>
+              </>
+            ) : (
+              'Crash Land'
+            )}
+          </button>
+        </form>
       </div>
-      <input 
-        className={clsInput}
-        type="number" placeholder="Start Location (2-4 digits)" 
-        value={loc} onChange={e => setLoc(e.target.value)} 
-      />
-      <div className="flex-grow"></div>
-      <button className={`${clsButton} border-[#ff5252] text-[#ff5252]`} onClick={submit}>
-        Crash Land
-      </button>
-    </div>
+    </section>
   );
 };
 
-const NormalScreen: React.FC<{ 
+// ==========================================
+// ACTIVE EXPEDITION / NORMAL SCREEN
+// ==========================================
+
+const COMPASS_BEARINGS: Exclude<Direction, null>[] = [
+  'N',
+  'NE',
+  'E',
+  'SE',
+  'S',
+  'SW',
+  'W',
+  'NW',
+  'C',
+];
+
+const RESOURCE_META: Array<{ key: ResourceColor; label: string; hex: string }> = [
+  { key: 'red', label: 'Red', hex: '#ff4a4a' },
+  { key: 'blue', label: 'Blue', hex: '#4a90e2' },
+  { key: 'green', label: 'Green', hex: '#34d399' },
+  { key: 'yellow', label: 'Yellow', hex: '#f5a623' },
+  { key: 'purple', label: 'Purple', hex: '#c084fc' },
+  { key: 'orange', label: 'Orange', hex: '#ff8c00' },
+];
+
+const NormalScreen: React.FC<{
   gameState: GameState;
-  onMove: (loc: string, dir: Direction) => void;
+  isSyncing: boolean;
+  onMove: (loc: string, dir: Direction) => Promise<boolean>;
   onResourceChange: (color: ResourceColor, delta: number) => void;
-}> = ({ gameState, onMove, onResourceChange }) => {
-  
+}> = ({ gameState, isSyncing, onMove, onResourceChange }) => {
   const [targetLoc, setTargetLoc] = useState('');
-  const [localDirection, setLocalDirection] = useState<Direction>(gameState.direction);
-  const resourceColors: ResourceColor[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+  const [selectedDirection, setSelectedDirection] = useState<Direction>(null);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moving, setMoving] = useState(false);
 
-  const RES_STYLES: Record<ResourceColor, { border: string, text: string }> = {
-    red: { border: 'border-[#ff4a4a]', text: 'text-[#ff4a4a]' },
-    blue: { border: 'border-[#4a90e2]', text: 'text-[#4a90e2]' },
-    green: { border: 'border-[#50e3c2]', text: 'text-[#50e3c2]' },
-    yellow: { border: 'border-[#f5a623]', text: 'text-[#f5a623]' },
-    purple: { border: 'border-[#bd10e0]', text: 'text-[#bd10e0]' },
-    orange: { border: 'border-[#ff8c00]', text: 'text-[#ff8c00]' }
-  };
+  const isPortal = selectedDirection === 'C';
 
-  const COMPASS_POS = {
-    N: 'top-0 left-[60px]',
-    NE: 'top-[15px] right-[15px]',
-    E: 'top-[60px] right-0',
-    SE: 'bottom-[15px] right-[15px]',
-    S: 'bottom-0 left-[60px]',
-    SW: 'bottom-[15px] left-[15px]',
-    W: 'top-[60px] left-0',
-    NW: 'top-[15px] left-[15px]',
-    C: 'top-[60px] left-[60px] rounded-full'
-  };
-
-  // --- STRICT RESOURCE DEBOUNCE & ACK LOGIC ---
-  const syncState = useRef({
-    timer: null as ReturnType<typeof setTimeout> | null,
-    isAwaitingAck: false,
-    pendingSync: false
-  });
-  
-  const latestResources = useRef(gameState.resources);
-  useEffect(() => {
-    latestResources.current = gameState.resources;
-  }, [gameState.resources]);
-
-  const triggerResourceChange = (color: ResourceColor, delta: number) => {
-    onResourceChange(color, delta);
-    
-    if (syncState.current.timer) clearTimeout(syncState.current.timer);
-    syncState.current.timer = setTimeout(attemptResourceSync, 1000);
-  };
-
-  const attemptResourceSync = async () => {
-    if (syncState.current.isAwaitingAck) {
-      syncState.current.pendingSync = true;
-      return;
-    }
-    syncState.current.isAwaitingAck = true;
-
-    try {
-      await new Promise(r => setTimeout(r, 400));
-      console.log("Resources synced to server:", latestResources.current);
-    } catch (e) {
-      console.error("Resource sync failed", e);
-    } finally {
-      syncState.current.isAwaitingAck = false;
-      if (syncState.current.pendingSync) {
-        syncState.current.pendingSync = false;
-        attemptResourceSync();
-      }
-    }
-  };
-
-  const submitMove = () => {
-    if (!localDirection) {
-      alert("Please select a direction on the compass.");
+  const handleMoveSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedDirection) {
+      setMoveError('Tap a compass direction (or ★ for a portal jump) first.');
       return;
     }
     if (!/^\d{2,4}$/.test(targetLoc)) {
-      alert("Target Location must be a 2 to 4 digit number.");
+      setMoveError('Destination must be a 2 to 4 digit location number.');
       return;
     }
-    onMove(targetLoc, localDirection);
-    setTargetLoc('');
-    setLocalDirection(null);
+
+    setMoveError(null);
+    setMoving(true);
+    const ok = await onMove(targetLoc, selectedDirection);
+    setMoving(false);
+
+    if (ok) {
+      setTargetLoc('');
+      setSelectedDirection(null);
+    } else {
+      setMoveError('Move failed to reach Host Map. Check connection and retry.');
+    }
   };
 
+  const bearingLabel = !selectedDirection
+    ? 'Select bearing'
+    : isPortal
+      ? 'Portal Jump (★)'
+      : `Bearing ${selectedDirection}`;
+
   return (
-    <div className="flex flex-col h-full w-full animate-fade-in">
-      <div className="flex justify-between items-center mb-5">
-        <button 
-          className={`${clsButton} w-auto px-4 py-1.5 rounded-2xl text-sm`} 
-          onClick={() => console.log("Undo requested")}
-        >
-          Undo
-        </button>
-      </div>
-      
-      <div className="mb-5">
-        <div className="text-[1.2rem] font-bold mb-1" style={{ color: gameState.color }}>
-          {gameState.name}
+    <section className="screen-view" aria-label="Active expedition controller">
+      {/* Top Explorer & Location Status Bar */}
+      <header className="status-header">
+        <div className="explorer-identity">
+          <span
+            className="explorer-dot"
+            style={{ backgroundColor: gameState.color }}
+            aria-hidden="true"
+          />
+          <div className="explorer-meta">
+            <h1 className="explorer-name" style={{ margin: 0 }}>
+              {gameState.name}
+            </h1>
+            <span className="room-meta">
+              <span
+                className={`sync-dot ${isSyncing ? 'sync-dot--busy' : ''}`}
+                aria-hidden="true"
+              />
+              ROOM {gameState.code} &middot; {isSyncing ? 'SYNCING' : 'LIVE'}
+            </span>
+          </div>
         </div>
-        <div>Location: {gameState.location || '###'}</div>
-      </div>
 
-      <div className="flex flex-row justify-between items-center flex-grow">
-        
-        {/* Resources Column */}
-        <div className="flex flex-col gap-2.5">
-          {resourceColors.map(color => (
-            <div key={color} className="flex items-center gap-2.5">
-              <div className={`w-[30px] h-[30px] rounded-full border ${RES_STYLES[color].border}`}></div>
-              <div className={`flex flex-col border border-[#555] rounded-lg overflow-hidden px-1 py-0.5 ${RES_STYLES[color].text}`}>
-                <button className="bg-transparent border-none text-white text-xs px-2.5 py-0.5 cursor-pointer active:bg-[#333]" onClick={() => triggerResourceChange(color, 1)}>▲</button>
-                <span className="text-center text-sm my-0.5">{gameState.resources[color]}</span>
-                <button className="bg-transparent border-none text-white text-xs px-2.5 py-0.5 cursor-pointer active:bg-[#333]" onClick={() => triggerResourceChange(color, -1)}>▼</button>
-              </div>
+        <div className="location-readout" aria-live="polite">
+          <span className="location-readout__label">Location</span>
+          <span id="current-location-value" className="location-readout__value">
+            #{gameState.location || '---'}
+          </span>
+        </div>
+      </header>
+
+      <div className="expedition-grid">
+        {/* Navigation & Movement Panel */}
+        <div className="surface-panel">
+          <div className="section-heading-row">
+            <h2 className="section-title">Navigation</h2>
+            <span
+              className={`bearing-readout ${
+                selectedDirection
+                  ? isPortal
+                    ? 'bearing-readout--portal'
+                    : 'bearing-readout--active'
+                  : ''
+              }`}
+            >
+              {bearingLabel}
+            </span>
+          </div>
+
+          {/* Tactile 8-Point + Portal Compass Rose */}
+          <div className="compass-stage" role="group" aria-label="Compass direction selector">
+            <svg className="compass-ring-svg" viewBox="0 0 224 224" aria-hidden="true">
+              <circle
+                cx="112"
+                cy="112"
+                r="84"
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.08)"
+                strokeWidth="1.5"
+              />
+              <circle
+                cx="112"
+                cy="112"
+                r="42"
+                fill="none"
+                stroke="rgba(255, 255, 255, 0.05)"
+                strokeDasharray="3 4"
+                strokeWidth="1"
+              />
+              <line
+                x1="112"
+                y1="28"
+                x2="112"
+                y2="196"
+                stroke="rgba(255, 255, 255, 0.06)"
+                strokeWidth="1"
+              />
+              <line
+                x1="28"
+                y1="112"
+                x2="196"
+                y2="112"
+                stroke="rgba(255, 255, 255, 0.06)"
+                strokeWidth="1"
+              />
+              <line
+                x1="52.6"
+                y1="52.6"
+                x2="171.4"
+                y2="171.4"
+                stroke="rgba(255, 255, 255, 0.04)"
+                strokeWidth="1"
+              />
+              <line
+                x1="171.4"
+                y1="52.6"
+                x2="52.6"
+                y2="171.4"
+                stroke="rgba(255, 255, 255, 0.04)"
+                strokeWidth="1"
+              />
+            </svg>
+
+            {COMPASS_BEARINGS.map((dir) => {
+              const isSelected = selectedDirection === dir;
+              const centerPortal = dir === 'C';
+              return (
+                <button
+                  key={dir}
+                  id={`compass-dir-${dir.toLowerCase()}`}
+                  type="button"
+                  className={`compass-node compass-pos-${dir} ${
+                    centerPortal ? 'compass-node--portal' : ''
+                  }`}
+                  aria-label={centerPortal ? 'Portal or Special movement' : `Direction ${dir}`}
+                  aria-pressed={isSelected}
+                  onClick={() => {
+                    setSelectedDirection((prev) => (prev === dir ? null : dir));
+                    if (moveError) setMoveError(null);
+                  }}
+                >
+                  {centerPortal ? '★' : dir}
+                </button>
+              );
+            })}
+          </div>
+
+          {moveError && (
+            <div id="move-error-banner" className="inline-banner inline-banner--error" role="alert">
+              <svg className="banner-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path
+                  fillRule="evenodd"
+                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <span>{moveError}</span>
             </div>
-          ))}
+          )}
+
+          <form id="move-form" className="move-bar" onSubmit={handleMoveSubmit} noValidate>
+            <input
+              id="target-location-input"
+              className="text-input text-input--mono"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={4}
+              placeholder="Dest # (2–4 digits)"
+              aria-label="Destination location number"
+              enterKeyHint="send"
+              value={targetLoc}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                setTargetLoc(digits);
+                if (moveError) setMoveError(null);
+              }}
+            />
+            <button
+              id="submit-move-btn"
+              type="submit"
+              className={`btn ${isPortal ? 'btn--amber' : 'btn--primary'}`}
+              disabled={moving}
+            >
+              {moving ? (
+                <span className="spinner" aria-hidden="true" />
+              ) : isPortal ? (
+                'Portal ★'
+              ) : selectedDirection ? (
+                `Move ${selectedDirection}`
+              ) : (
+                'Move'
+              )}
+            </button>
+          </form>
         </div>
 
-        {/* Compass Column */}
-        <div className="relative w-[150px] h-[150px]">
-          {(Object.keys(COMPASS_POS) as Direction[]).map(dir => {
-            if (!dir) return null;
-            const isSelected = localDirection === dir;
-            return (
-              <button 
-                key={dir}
-                className={`absolute w-[30px] h-[30px] border border-white rounded-[5px] flex justify-center items-center text-[0.7rem] cursor-pointer p-0 transition-colors ${COMPASS_POS[dir]} ${isSelected ? 'bg-white text-[#121212]' : 'bg-transparent text-white'}`}
-                onClick={() => setLocalDirection(dir)}
-              >
-                {dir === 'C' ? '★' : dir}
-              </button>
-            )
-          })}
+        {/* Resources Panel */}
+        <div className="surface-panel">
+          <div className="section-heading-row">
+            <h2 className="section-title">Resources</h2>
+          </div>
+
+          <div className="resources-grid">
+            {RESOURCE_META.map(({ key, label, hex }) => {
+              const count = gameState.resources[key];
+              return (
+                <div key={key} className="resource-stepper">
+                  <div className="resource-label-group">
+                    <span
+                      className="resource-pip"
+                      style={{ backgroundColor: hex }}
+                      aria-hidden="true"
+                    />
+                    <span className="resource-name">{label}</span>
+                  </div>
+                  <div className="stepper-controls">
+                    <button
+                      id={`res-${key}-dec`}
+                      type="button"
+                      className="stepper-btn"
+                      aria-label={`Decrease ${label}`}
+                      disabled={count <= 0}
+                      onClick={() => onResourceChange(key, -1)}
+                    >
+                      &minus;
+                    </button>
+                    <span id={`res-${key}-val`} className="resource-count">
+                      {count}
+                    </span>
+                    <button
+                      id={`res-${key}-inc`}
+                      type="button"
+                      className="stepper-btn"
+                      aria-label={`Increase ${label}`}
+                      onClick={() => onResourceChange(key, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
-
-      {/* Bottom Controls */}
-      <div className="flex gap-2.5 mt-5">
-        <input 
-          className={`${clsInput} !mb-0 flex-grow`}
-          type="number" placeholder="###" 
-          value={targetLoc} onChange={e => setTargetLoc(e.target.value)} 
-        />
-        <button className={`${clsButton} w-auto flex-grow`} onClick={submitMove}>Move</button>
-      </div>
-    </div>
+    </section>
   );
 };
 

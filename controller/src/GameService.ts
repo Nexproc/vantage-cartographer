@@ -1,46 +1,115 @@
 import Peer, { type DataConnection } from "peerjs";
 import type { Direction, Resources } from './types';
 
+interface ApiResponseMessage {
+  type: 'API_RESPONSE';
+  reqId: string;
+  ok: boolean;
+  data?: Record<string, unknown>;
+  error?: string;
+}
+
+function isApiResponseMessage(val: unknown): val is ApiResponseMessage {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    (val as { type?: unknown }).type === 'API_RESPONSE' &&
+    typeof (val as { reqId?: unknown }).reqId === 'string'
+  );
+}
+
 export class GameService {
   private static peer: Peer | null = null;
   private static conn: DataConnection | null = null;
-  private static pendingRequests: Record<string, { resolve: Function, reject: Function }> = {};
+  private static currentHostCode: string | null = null;
+  private static pendingRequests: Record<
+    string,
+    { resolve: (value: Record<string, unknown>) => void; reject: (reason?: Error) => void }
+  > = {};
 
   static async setHost(hostCode: string): Promise<void> {
+    const cleanCode = hostCode.trim().toUpperCase();
+
     // If we are already connected to this host, don't reconnect
-    if (this.conn && this.conn.open) return;
+    if (this.conn && this.conn.open && this.currentHostCode === cleanCode) return;
+
+    if (this.peer) {
+      this.peer.destroy();
+      this.peer = null;
+      this.conn = null;
+      this.currentHostCode = null;
+    }
 
     return new Promise((resolve, reject) => {
-      this.peer = new Peer();
-      
-      this.peer.on('open', () => {
-        this.conn = this.peer!.connect(`map-${hostCode}`);
-        
-        this.conn.on('open', () => {
-          resolve(); 
+      let settled = false;
+      const finish = (err?: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(handshakeTimer);
+        if (err) {
+          if (this.peer) {
+            this.peer.destroy();
+            this.peer = null;
+            this.conn = null;
+            this.currentHostCode = null;
+          }
+          reject(err);
+        } else {
+          this.currentHostCode = cleanCode;
+          resolve();
+        }
+      };
+
+      const handshakeTimer = setTimeout(() => {
+        finish(new Error('Connection timed out'));
+      }, 8000);
+
+      const peer = new Peer();
+      this.peer = peer;
+
+      peer.on('error', (err) => {
+        finish(err instanceof Error ? err : new Error(String(err)));
+      });
+
+      peer.on('open', () => {
+        if (settled) return;
+        const conn = peer.connect(`map-${cleanCode}`);
+        this.conn = conn;
+
+        conn.on('open', () => {
+          finish();
         });
 
-        this.conn.on('data', (data: any) => {
-          if (data.type === 'API_RESPONSE' && this.pendingRequests[data.reqId]) {
+        conn.on('data', (data: unknown) => {
+          if (isApiResponseMessage(data) && this.pendingRequests[data.reqId]) {
             if (data.ok) {
-              this.pendingRequests[data.reqId].resolve(data.data);
+              this.pendingRequests[data.reqId].resolve(data.data ?? {});
             } else {
-              this.pendingRequests[data.reqId].reject(new Error(data.error));
+              this.pendingRequests[data.reqId].reject(new Error(data.error ?? 'Request failed'));
             }
             delete this.pendingRequests[data.reqId];
           }
         });
-        
-        this.conn.on('error', (err) => {
-          reject(err);
+
+        conn.on('error', (err) => {
+          finish(err instanceof Error ? err : new Error(String(err)));
+        });
+
+        conn.on('close', () => {
+          if (!settled) {
+            finish(new Error('Connection closed'));
+          }
         });
       });
     });
   }
 
-  private static async request(endpoint: string, body: any): Promise<any> {
+  private static async request(
+    endpoint: string,
+    body: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
     // Safety check: ensure gameCode is present to auto-connect if needed
-    if ((!this.conn || !this.conn.open) && body.gameCode) {
+    if ((!this.conn || !this.conn.open) && typeof body.gameCode === 'string') {
       await this.setHost(body.gameCode);
     }
 
@@ -70,9 +139,10 @@ export class GameService {
   }
 
   static async connect(code: string, name: string) {
+    const cleanCode = code.trim().toUpperCase();
     // Explicitly guarantee connection is established before firing the endpoint
-    await this.setHost(code);
-    return this.request('/connect', { gameCode: code, playerName: name });
+    await this.setHost(cleanCode);
+    return this.request('/connect', { gameCode: cleanCode, playerName: name });
   }
 
   static async crashLand(code: string, name: string, location: string, color: string) {
