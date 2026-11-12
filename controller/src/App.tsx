@@ -132,8 +132,8 @@ const SetupScreen: React.FC<{
               })}
               <label className="custom-color-wrap" title="Choose custom color">
                 <svg
-                  width="18"
-                  height="18"
+                  width="16"
+                  height="16"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -160,7 +160,7 @@ const SetupScreen: React.FC<{
 
           <div className="field-group">
             <label htmlFor="start-location-input" className="field-label">
-              Starting Location
+              Starting Location (2–4 digits)
             </label>
             <input
               id="start-location-input"
@@ -178,7 +178,6 @@ const SetupScreen: React.FC<{
                 if (errorMsg) setErrorMsg(null);
               }}
             />
-            <p className="field-hint">Enter the 2 to 4 digit number printed on your starting card.</p>
           </div>
 
           <button
@@ -243,11 +242,11 @@ const NormalScreen: React.FC<{
   const handleMoveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDirection) {
-      setMoveError('Tap a compass direction (or ★ for a portal jump) first.');
+      setMoveError('Select a compass bearing (or ★ portal) first.');
       return;
     }
     if (!/^\d{2,4}$/.test(targetLoc)) {
-      setMoveError('Destination must be a 2 to 4 digit location number.');
+      setMoveError('Enter a 2 to 4 digit destination location.');
       return;
     }
 
@@ -260,19 +259,19 @@ const NormalScreen: React.FC<{
       setTargetLoc('');
       setSelectedDirection(null);
     } else {
-      setMoveError('Move failed to reach Host Map. Check connection and retry.');
+      setMoveError('Move failed to reach Host Map. Retry.');
     }
   };
 
   const bearingLabel = !selectedDirection
-    ? 'Select bearing'
+    ? 'Tap bearing'
     : isPortal
       ? 'Portal Jump (★)'
       : `Bearing ${selectedDirection}`;
 
   return (
     <section className="screen-view" aria-label="Active expedition controller">
-      {/* Top Explorer & Location Status Bar */}
+      {/* Compact Top Explorer & Location Status Bar */}
       <header className="status-header">
         <div className="explorer-identity">
           <span
@@ -289,22 +288,67 @@ const NormalScreen: React.FC<{
                 className={`sync-dot ${isSyncing ? 'sync-dot--busy' : ''}`}
                 aria-hidden="true"
               />
-              ROOM {gameState.code} &middot; {isSyncing ? 'SYNCING' : 'LIVE'}
+              {gameState.code} &middot; {isSyncing ? 'SYNCING' : 'LIVE'}
             </span>
           </div>
         </div>
 
         <div className="location-readout" aria-live="polite">
-          <span className="location-readout__label">Location</span>
+          <span className="location-readout__label">LOC</span>
           <span id="current-location-value" className="location-readout__value">
             #{gameState.location || '---'}
           </span>
         </div>
       </header>
 
-      <div className="expedition-grid">
+      <div className="expedition-body">
+        {/* Compact 3x2 Resource Tiles (2x3 on wide screens) */}
+        <div className="resources-grid" role="group" aria-label="Explorer resources">
+          {RESOURCE_META.map(({ key, label, hex }) => {
+            const count = gameState.resources[key];
+            return (
+              <div key={key} className="resource-tile">
+                <div className="resource-tile__top">
+                  <div className="resource-label-group">
+                    <span
+                      className="resource-pip"
+                      style={{ backgroundColor: hex }}
+                      aria-hidden="true"
+                    />
+                    <span className="resource-name">{label}</span>
+                  </div>
+                  <span id={`res-${key}-val`} className="resource-count">
+                    {count}
+                  </span>
+                </div>
+                <div className="resource-tile__actions">
+                  <button
+                    id={`res-${key}-dec`}
+                    type="button"
+                    className="stepper-btn"
+                    aria-label={`Decrease ${label}`}
+                    disabled={count <= 0}
+                    onClick={() => onResourceChange(key, -1)}
+                  >
+                    &minus;
+                  </button>
+                  <button
+                    id={`res-${key}-inc`}
+                    type="button"
+                    className="stepper-btn"
+                    aria-label={`Increase ${label}`}
+                    onClick={() => onResourceChange(key, 1)}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
         {/* Navigation & Movement Panel */}
-        <div className="surface-panel">
+        <div className="nav-panel">
           <div className="section-heading-row">
             <h2 className="section-title">Navigation</h2>
             <span
@@ -320,7 +364,7 @@ const NormalScreen: React.FC<{
             </span>
           </div>
 
-          {/* Tactile 8-Point + Portal Compass Rose */}
+          {/* Fluid Tactile 8-Point + Portal Compass Rose */}
           <div className="compass-stage" role="group" aria-label="Compass direction selector">
             <svg className="compass-ring-svg" viewBox="0 0 224 224" aria-hidden="true">
               <circle
@@ -398,102 +442,55 @@ const NormalScreen: React.FC<{
             })}
           </div>
 
-          {moveError && (
-            <div id="move-error-banner" className="inline-banner inline-banner--error" role="alert">
-              <svg className="banner-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path
-                  fillRule="evenodd"
-                  d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span>{moveError}</span>
-            </div>
-          )}
+          <div className="move-footer">
+            {moveError && (
+              <div id="move-error-banner" className="inline-banner inline-banner--error" role="alert">
+                <svg className="banner-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path
+                    fillRule="evenodd"
+                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>{moveError}</span>
+              </div>
+            )}
 
-          <form id="move-form" className="move-bar" onSubmit={handleMoveSubmit} noValidate>
-            <input
-              id="target-location-input"
-              className="text-input text-input--mono"
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              maxLength={4}
-              placeholder="Location #"
-              aria-label="Destination location number"
-              enterKeyHint="send"
-              value={targetLoc}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
-                setTargetLoc(digits);
-                if (moveError) setMoveError(null);
-              }}
-            />
-            <button
-              id="submit-move-btn"
-              type="submit"
-              className={`btn ${isPortal ? 'btn--amber' : 'btn--primary'}`}
-              disabled={moving}
-            >
-              {moving ? (
-                <span className="spinner" aria-hidden="true" />
-              ) : isPortal ? (
-                'Portal ★'
-              ) : selectedDirection ? (
-                `Move ${selectedDirection}`
-              ) : (
-                'Move'
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* Resources Panel */}
-        <div className="surface-panel">
-          <div className="section-heading-row">
-            <h2 className="section-title">Resources</h2>
-          </div>
-
-          <div className="resources-grid">
-            {RESOURCE_META.map(({ key, label, hex }) => {
-              const count = gameState.resources[key];
-              return (
-                <div key={key} className="resource-stepper">
-                  <div className="resource-label-group">
-                    <span
-                      className="resource-pip"
-                      style={{ backgroundColor: hex }}
-                      aria-hidden="true"
-                    />
-                    <span className="resource-name">{label}</span>
-                  </div>
-                  <div className="stepper-controls">
-                    <button
-                      id={`res-${key}-dec`}
-                      type="button"
-                      className="stepper-btn"
-                      aria-label={`Decrease ${label}`}
-                      disabled={count <= 0}
-                      onClick={() => onResourceChange(key, -1)}
-                    >
-                      &minus;
-                    </button>
-                    <span id={`res-${key}-val`} className="resource-count">
-                      {count}
-                    </span>
-                    <button
-                      id={`res-${key}-inc`}
-                      type="button"
-                      className="stepper-btn"
-                      aria-label={`Increase ${label}`}
-                      onClick={() => onResourceChange(key, 1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
+            <form id="move-form" className="move-bar" onSubmit={handleMoveSubmit} noValidate>
+              <input
+                id="target-location-input"
+                className="text-input text-input--mono"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={4}
+                placeholder="Location #"
+                aria-label="Destination location number"
+                enterKeyHint="send"
+                value={targetLoc}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setTargetLoc(digits);
+                  if (moveError) setMoveError(null);
+                }}
+              />
+              <button
+                id="submit-move-btn"
+                type="submit"
+                className={`btn ${isPortal ? 'btn--amber' : 'btn--primary'}`}
+                disabled={moving}
+              >
+                {moving ? (
+                  <span className="spinner" aria-hidden="true" />
+                ) : isPortal ? (
+                  'Portal ★'
+                ) : selectedDirection ? (
+                  `Move ${selectedDirection}`
+                ) : (
+                  'Move'
+                )}
+              </button>
+            </form>
           </div>
         </div>
       </div>
