@@ -419,7 +419,7 @@ const NormalScreen: React.FC<{
               inputMode="numeric"
               pattern="[0-9]*"
               maxLength={4}
-              placeholder="Dest # (2–4 digits)"
+              placeholder="Location #"
               aria-label="Destination location number"
               enterKeyHint="send"
               value={targetLoc}
