@@ -1,7 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { GameState, ResourceColor, Direction } from './types';
 import { useGameState } from './useGameState';
 import { ConnectScreen } from './ConnectScreen';
+
+const PortalSwirlIcon: React.FC<{ className?: string }> = ({ className = 'portal-swirl-icon' }) => (
+  <svg
+    className={className}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.9"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M 3.25 12.6 A 8.5 8.5 0 0 1 20.25 12.6 A 6.75 6.75 0 0 1 6.75 12.6 A 5 5 0 0 1 16.75 12.6 A 3.25 3.25 0 0 1 10.25 12.6 A 1.6 1.6 0 0 1 13.45 12.6" />
+  </svg>
+);
 
 const App: React.FC = () => {
   const { activeScreen, gameState, isSyncing, connect, crashLand, move, adjustResource } = useGameState();
@@ -237,12 +252,30 @@ const NormalScreen: React.FC<{
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
 
+  // Keep floating composer bar docked above virtual keyboard on mobile Safari/Chrome
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const syncKeyboardOffset = () => {
+      const offset = Math.max(0, window.innerHeight - (vv.height + vv.offsetTop));
+      document.documentElement.style.setProperty('--vv-offset', `${offset}px`);
+    };
+    vv.addEventListener('resize', syncKeyboardOffset);
+    vv.addEventListener('scroll', syncKeyboardOffset);
+    syncKeyboardOffset();
+    return () => {
+      vv.removeEventListener('resize', syncKeyboardOffset);
+      vv.removeEventListener('scroll', syncKeyboardOffset);
+      document.documentElement.style.removeProperty('--vv-offset');
+    };
+  }, []);
+
   const isPortal = selectedDirection === 'C';
+  const hasDirection = selectedDirection !== null;
 
   const handleMoveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedDirection) {
-      setMoveError('Select a compass bearing (or ★ portal) first.');
       return;
     }
     if (!/^\d{2,4}$/.test(targetLoc)) {
@@ -264,237 +297,261 @@ const NormalScreen: React.FC<{
   };
 
   const bearingLabel = !selectedDirection
-    ? 'Tap bearing'
+    ? 'Select direction'
     : isPortal
-      ? 'Portal Jump (★)'
+      ? 'Portal Jump'
       : `Bearing ${selectedDirection}`;
 
   return (
-    <section className="screen-view" aria-label="Active expedition controller">
-      {/* Compact Top Explorer & Location Status Bar */}
-      <header className="status-header">
-        <div className="explorer-identity">
-          <span
-            className="explorer-dot"
-            style={{ backgroundColor: gameState.color }}
-            aria-hidden="true"
-          />
-          <div className="explorer-meta">
-            <h1 className="explorer-name" style={{ margin: 0 }}>
-              {gameState.name}
-            </h1>
-            <span className="room-meta">
-              <span
-                className={`sync-dot ${isSyncing ? 'sync-dot--busy' : ''}`}
-                aria-hidden="true"
-              />
-              {gameState.code} &middot; {isSyncing ? 'SYNCING' : 'LIVE'}
-            </span>
-          </div>
-        </div>
-
-        <div className="location-readout" aria-live="polite">
-          <span className="location-readout__label">LOC</span>
-          <span id="current-location-value" className="location-readout__value">
-            #{gameState.location || '---'}
-          </span>
-        </div>
-      </header>
-
-      <div className="expedition-body">
-        {/* Compact 3x2 Resource Tiles (2x3 on wide screens) */}
-        <div className="resources-grid" role="group" aria-label="Explorer resources">
-          {RESOURCE_META.map(({ key, label, hex }) => {
-            const count = gameState.resources[key];
-            return (
-              <div key={key} className="resource-tile">
-                <div className="resource-tile__top">
-                  <div className="resource-label-group">
-                    <span
-                      className="resource-pip"
-                      style={{ backgroundColor: hex }}
-                      aria-hidden="true"
-                    />
-                    <span className="resource-name">{label}</span>
-                  </div>
-                  <span id={`res-${key}-val`} className="resource-count">
-                    {count}
-                  </span>
-                </div>
-                <div className="resource-tile__actions">
-                  <button
-                    id={`res-${key}-dec`}
-                    type="button"
-                    className="stepper-btn"
-                    aria-label={`Decrease ${label}`}
-                    disabled={count <= 0}
-                    onClick={() => onResourceChange(key, -1)}
-                  >
-                    &minus;
-                  </button>
-                  <button
-                    id={`res-${key}-inc`}
-                    type="button"
-                    className="stepper-btn"
-                    aria-label={`Increase ${label}`}
-                    onClick={() => onResourceChange(key, 1)}
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Navigation & Movement Panel */}
-        <div className="nav-panel">
-          <div className="section-heading-row">
-            <h2 className="section-title">Navigation</h2>
+    <>
+      <section className="screen-view" aria-label="Active expedition controller">
+        {/* Compact Top Explorer & Location Status Bar */}
+        <header className="status-header">
+          <div className="explorer-identity">
             <span
-              className={`bearing-readout ${
-                selectedDirection
-                  ? isPortal
-                    ? 'bearing-readout--portal'
-                    : 'bearing-readout--active'
-                  : ''
-              }`}
-            >
-              {bearingLabel}
-            </span>
+              className="explorer-dot"
+              style={{ backgroundColor: gameState.color }}
+              aria-hidden="true"
+            />
+            <div className="explorer-meta">
+              <h1 className="explorer-name" style={{ margin: 0 }}>
+                {gameState.name}
+              </h1>
+              <span className="room-meta">
+                <span
+                  className={`sync-dot ${isSyncing ? 'sync-dot--busy' : ''}`}
+                  aria-hidden="true"
+                />
+                {gameState.code} &middot; {isSyncing ? 'SYNCING' : 'LIVE'}
+              </span>
+            </div>
           </div>
 
-          {/* Fluid Tactile 8-Point + Portal Compass Rose */}
-          <div className="compass-stage" role="group" aria-label="Compass direction selector">
-            <svg className="compass-ring-svg" viewBox="0 0 224 224" aria-hidden="true">
-              <circle
-                cx="112"
-                cy="112"
-                r="84"
-                fill="none"
-                stroke="rgba(255, 255, 255, 0.08)"
-                strokeWidth="1.5"
-              />
-              <circle
-                cx="112"
-                cy="112"
-                r="42"
-                fill="none"
-                stroke="rgba(255, 255, 255, 0.05)"
-                strokeDasharray="3 4"
-                strokeWidth="1"
-              />
-              <line
-                x1="112"
-                y1="28"
-                x2="112"
-                y2="196"
-                stroke="rgba(255, 255, 255, 0.06)"
-                strokeWidth="1"
-              />
-              <line
-                x1="28"
-                y1="112"
-                x2="196"
-                y2="112"
-                stroke="rgba(255, 255, 255, 0.06)"
-                strokeWidth="1"
-              />
-              <line
-                x1="52.6"
-                y1="52.6"
-                x2="171.4"
-                y2="171.4"
-                stroke="rgba(255, 255, 255, 0.04)"
-                strokeWidth="1"
-              />
-              <line
-                x1="171.4"
-                y1="52.6"
-                x2="52.6"
-                y2="171.4"
-                stroke="rgba(255, 255, 255, 0.04)"
-                strokeWidth="1"
-              />
-            </svg>
+          <div className="location-readout" aria-live="polite">
+            <span className="location-readout__label">LOC</span>
+            <span id="current-location-value" className="location-readout__value">
+              #{gameState.location || '---'}
+            </span>
+          </div>
+        </header>
 
-            {COMPASS_BEARINGS.map((dir) => {
-              const isSelected = selectedDirection === dir;
-              const centerPortal = dir === 'C';
+        <div className="expedition-body">
+          {/* Compact 3x2 Resource Tiles (2x3 on wide screens) */}
+          <div className="resources-grid" role="group" aria-label="Explorer resources">
+            {RESOURCE_META.map(({ key, label, hex }) => {
+              const count = gameState.resources[key];
               return (
-                <button
-                  key={dir}
-                  id={`compass-dir-${dir.toLowerCase()}`}
-                  type="button"
-                  className={`compass-node compass-pos-${dir} ${
-                    centerPortal ? 'compass-node--portal' : ''
-                  }`}
-                  aria-label={centerPortal ? 'Portal or Special movement' : `Direction ${dir}`}
-                  aria-pressed={isSelected}
-                  onClick={() => {
-                    setSelectedDirection((prev) => (prev === dir ? null : dir));
-                    if (moveError) setMoveError(null);
-                  }}
-                >
-                  {centerPortal ? '★' : dir}
-                </button>
+                <div key={key} className="resource-tile">
+                  <div className="resource-tile__top">
+                    <div className="resource-label-group">
+                      <span
+                        className="resource-pip"
+                        style={{ backgroundColor: hex }}
+                        aria-hidden="true"
+                      />
+                      <span className="resource-name">{label}</span>
+                    </div>
+                    <span id={`res-${key}-val`} className="resource-count">
+                      {count}
+                    </span>
+                  </div>
+                  <div className="resource-tile__actions">
+                    <button
+                      id={`res-${key}-dec`}
+                      type="button"
+                      className="stepper-btn"
+                      aria-label={`Decrease ${label}`}
+                      disabled={count <= 0}
+                      onClick={() => onResourceChange(key, -1)}
+                    >
+                      &minus;
+                    </button>
+                    <button
+                      id={`res-${key}-inc`}
+                      type="button"
+                      className="stepper-btn"
+                      aria-label={`Increase ${label}`}
+                      onClick={() => onResourceChange(key, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>
 
-          <div className="move-footer">
-            {moveError && (
-              <div id="move-error-banner" className="inline-banner inline-banner--error" role="alert">
-                <svg className="banner-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path
-                    fillRule="evenodd"
-                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                <span>{moveError}</span>
-              </div>
-            )}
-
-            <form id="move-form" className="move-bar" onSubmit={handleMoveSubmit} noValidate>
-              <input
-                id="target-location-input"
-                className="text-input text-input--mono"
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                maxLength={4}
-                placeholder="Location #"
-                aria-label="Destination location number"
-                enterKeyHint="send"
-                value={targetLoc}
-                onChange={(e) => {
-                  const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
-                  setTargetLoc(digits);
-                  if (moveError) setMoveError(null);
-                }}
-              />
-              <button
-                id="submit-move-btn"
-                type="submit"
-                className={`btn ${isPortal ? 'btn--amber' : 'btn--primary'}`}
-                disabled={moving}
+          {/* Navigation Compass Panel */}
+          <div className="nav-panel">
+            <div className="section-heading-row">
+              <h2 className="section-title">Navigation</h2>
+              <span
+                className={`bearing-readout ${
+                  selectedDirection
+                    ? isPortal
+                      ? 'bearing-readout--portal'
+                      : 'bearing-readout--active'
+                    : ''
+                }`}
               >
-                {moving ? (
-                  <span className="spinner" aria-hidden="true" />
-                ) : isPortal ? (
-                  'Portal ★'
-                ) : selectedDirection ? (
-                  `Move ${selectedDirection}`
-                ) : (
-                  'Move'
-                )}
-              </button>
-            </form>
+                {bearingLabel}
+              </span>
+            </div>
+
+            {/* Fluid Tactile 8-Point + Portal Swirl Compass Rose */}
+            <div
+              className={`compass-stage ${!hasDirection ? 'compass-stage--awaiting' : ''}`}
+              role="group"
+              aria-label="Compass direction selector"
+            >
+              <svg className="compass-ring-svg" viewBox="0 0 224 224" aria-hidden="true">
+                <circle
+                  cx="112"
+                  cy="112"
+                  r="84"
+                  fill="none"
+                  stroke="rgba(255, 255, 255, 0.08)"
+                  strokeWidth="1.5"
+                />
+                <circle
+                  cx="112"
+                  cy="112"
+                  r="42"
+                  fill="none"
+                  stroke="rgba(255, 255, 255, 0.05)"
+                  strokeDasharray="3 4"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="112"
+                  y1="28"
+                  x2="112"
+                  y2="196"
+                  stroke="rgba(255, 255, 255, 0.06)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="28"
+                  y1="112"
+                  x2="196"
+                  y2="112"
+                  stroke="rgba(255, 255, 255, 0.06)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="52.6"
+                  y1="52.6"
+                  x2="171.4"
+                  y2="171.4"
+                  stroke="rgba(255, 255, 255, 0.04)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="171.4"
+                  y1="52.6"
+                  x2="52.6"
+                  y2="171.4"
+                  stroke="rgba(255, 255, 255, 0.04)"
+                  strokeWidth="1"
+                />
+              </svg>
+
+              {COMPASS_BEARINGS.map((dir) => {
+                const isSelected = selectedDirection === dir;
+                const centerPortal = dir === 'C';
+                return (
+                  <button
+                    key={dir}
+                    id={`compass-dir-${dir.toLowerCase()}`}
+                    type="button"
+                    className={`compass-node compass-pos-${dir} ${
+                      centerPortal ? 'compass-node--portal' : ''
+                    }`}
+                    aria-label={centerPortal ? 'Portal or Special movement' : `Direction ${dir}`}
+                    aria-pressed={isSelected}
+                    onClick={() => {
+                      setSelectedDirection((prev) => (prev === dir ? null : dir));
+                      if (moveError) setMoveError(null);
+                    }}
+                  >
+                    {centerPortal ? <PortalSwirlIcon /> : dir}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
+      </section>
+
+      {/* Floating Bottom Chat-Style Location + Move Bar */}
+      <div className="composer-dock">
+        {moveError && (
+          <div id="move-error-banner" className="composer-error-pill" role="alert">
+            <svg className="banner-icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path
+                fillRule="evenodd"
+                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-8-5a.75.75 0 01.75.75v4.5a.75.75 0 01-1.5 0v-4.5A.75.75 0 0110 5zm0 10a1 1 0 100-2 1 1 0 000 2z"
+                clipRule="evenodd"
+              />
+            </svg>
+            <span>{moveError}</span>
+          </div>
+        )}
+
+        <form
+          id="move-form"
+          className={`composer-pill ${isPortal ? 'composer-pill--portal' : ''}`}
+          onSubmit={handleMoveSubmit}
+          noValidate
+        >
+          <span className="composer-hash" aria-hidden="true">
+            #
+          </span>
+          <input
+            id="target-location-input"
+            className="composer-input"
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            maxLength={4}
+            placeholder="Location #"
+            aria-label="Destination location number"
+            enterKeyHint="send"
+            value={targetLoc}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+              setTargetLoc(digits);
+              if (moveError) setMoveError(null);
+            }}
+          />
+          <button
+            id="submit-move-btn"
+            type="submit"
+            className={`btn composer-submit-btn ${
+              !hasDirection
+                ? 'btn--inactive'
+                : isPortal
+                  ? 'btn--amber'
+                  : 'btn--primary'
+            }`}
+            disabled={moving || !hasDirection}
+          >
+            {moving ? (
+              <span className="spinner" aria-hidden="true" />
+            ) : !hasDirection ? (
+              'Move'
+            ) : isPortal ? (
+              <>
+                <PortalSwirlIcon className="portal-swirl-icon--inline" />
+                <span>Portal</span>
+              </>
+            ) : (
+              `Move ${selectedDirection}`
+            )}
+          </button>
+        </form>
       </div>
-    </section>
+    </>
   );
 };
 
