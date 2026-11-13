@@ -9,12 +9,27 @@ interface ApiResponseMessage {
   error?: string;
 }
 
+interface MapSyncMessage {
+  type: 'MAP_SYNC';
+  knownEdges: Record<string, Record<string, string>>;
+}
+
 function isApiResponseMessage(val: unknown): val is ApiResponseMessage {
   return (
     typeof val === 'object' &&
     val !== null &&
     (val as { type?: unknown }).type === 'API_RESPONSE' &&
     typeof (val as { reqId?: unknown }).reqId === 'string'
+  );
+}
+
+function isMapSyncMessage(val: unknown): val is MapSyncMessage {
+  return (
+    typeof val === 'object' &&
+    val !== null &&
+    (val as { type?: unknown }).type === 'MAP_SYNC' &&
+    typeof (val as { knownEdges?: unknown }).knownEdges === 'object' &&
+    (val as { knownEdges?: unknown }).knownEdges !== null
   );
 }
 
@@ -26,6 +41,14 @@ export class GameService {
     string,
     { resolve: (value: Record<string, unknown>) => void; reject: (reason?: Error) => void }
   > = {};
+  private static mapSyncListeners = new Set<(knownEdges: Record<string, Record<string, string>>) => void>();
+
+  static onMapSync(listener: (knownEdges: Record<string, Record<string, string>>) => void): () => void {
+    this.mapSyncListeners.add(listener);
+    return () => {
+      this.mapSyncListeners.delete(listener);
+    };
+  }
 
   static async setHost(hostCode: string): Promise<void> {
     const cleanCode = hostCode.trim().toUpperCase();
@@ -88,6 +111,8 @@ export class GameService {
               this.pendingRequests[data.reqId].reject(new Error(data.error ?? 'Request failed'));
             }
             delete this.pendingRequests[data.reqId];
+          } else if (isMapSyncMessage(data)) {
+            this.mapSyncListeners.forEach((listener) => listener(data.knownEdges));
           }
         });
 

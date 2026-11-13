@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { processMove, undoMove, getKnownNeighbors, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
+import { processMove, undoMove, getKnownNeighbors, getAllKnownEdges, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
 import type { GameState } from '../src/types.ts';
 
 function createInitialState(): GameState {
@@ -258,16 +258,26 @@ describe('HostMap Movement Logic (processMove)', () => {
       assert.deepEqual(getKnownNeighbors(state, '999'), {});
     });
 
-    it('does not override an existing known cardinal/intercardinal destination', () => {
+    it('does not override an existing known cardinal/intercardinal destination on the server', () => {
       const state = createInitialState();
       seedStartNode(state, 'Alice', '100', 200, 200);
+      seedStartNode(state, 'Bob', '100', 200, 200);
 
       // First known edge for 100 -> N is 205 (and 205 -> S is 100)
-      processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '205' });
-      // Subsequent move from 100 -> N to 300 must NOT override 100's first known N destination (205)
-      processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '300' });
+      const firstResolved = processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '205' });
+      assert.equal(firstResolved, '205');
 
+      // Subsequent move from 100 -> N attempting to go to 300 must be locked to 205 server-side
+      const secondResolved = processMove(state, { charName: 'Bob', fromId: '100', dir: 'N', toId: '300' });
+      assert.equal(secondResolved, '205');
+      assert.equal(state.characters['Bob'].location_id, '205');
+      assert.equal(state.nodes['300'], undefined, 'Server must not create conflicting node 300');
+      assert.equal(state.mapAdjacency['100'].length, 1);
       assert.equal(getKnownNeighbors(state, '100').N, '205');
+      assert.deepEqual(getAllKnownEdges(state), {
+        '100': { N: '205' },
+        '205': { S: '100' },
+      });
     });
 
     it('erases the edge and orphaned target node on undoMove when the edge was only crossed once', () => {
@@ -302,6 +312,21 @@ describe('HostMap Movement Logic (processMove)', () => {
       assert.equal(state.mapAdjacency['100']?.length, 1);
       assert.ok(state.nodes['101']);
       assert.equal(getKnownNeighbors(state, '100').E, '101');
+    });
+
+    it('removes only the undoing character from edge.characters when two players crossed the same edge', () => {
+      const state = createInitialState();
+      seedStartNode(state, 'Alice', '100', 200, 200);
+      seedStartNode(state, 'Bob', '100', 200, 200);
+
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+      processMove(state, { charName: 'Bob', fromId: '100', dir: 'E', toId: '101' });
+      assert.deepEqual(state.mapAdjacency['100'][0].characters, ['Alice', 'Bob']);
+
+      const { edgeRemoved } = undoMove(state, { charName: 'Bob', fromId: '100', dir: 'E', toId: '101' });
+      assert.equal(edgeRemoved, false);
+      assert.equal(state.characters['Bob'].location_id, '100');
+      assert.deepEqual(state.mapAdjacency['100'][0].characters, ['Alice']);
     });
   });
 });

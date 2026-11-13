@@ -57,6 +57,26 @@ export const getKnownNeighbors = (
   return neighbors;
 };
 
+export const getAllKnownEdges = (
+  state: GameState
+): Record<string, Record<string, string>> => {
+  const allNodeIds = new Set<string>(Object.keys(state.nodes));
+  for (const u in state.mapAdjacency) {
+    allNodeIds.add(u);
+    for (const edge of state.mapAdjacency[u]) {
+      allNodeIds.add(edge.id);
+    }
+  }
+  const result: Record<string, Record<string, string>> = {};
+  for (const nodeId of allNodeIds) {
+    const neighbors = getKnownNeighbors(state, nodeId);
+    if (Object.keys(neighbors).length > 0) {
+      result[nodeId] = neighbors;
+    }
+  }
+  return result;
+};
+
 export const GRID_SIZE = 80;
 export const SPECIAL_OFFSET = 120;
 
@@ -80,8 +100,8 @@ export const processMove = (
     width: typeof window !== 'undefined' ? window.innerWidth : 1000,
     height: typeof window !== 'undefined' ? window.innerHeight : 800,
   }
-): void => {
-  const { charName, fromId, dir, toId } = moveData;
+): string => {
+  const { charName, fromId, dir } = moveData;
 
   if (!dir) {
     throw new Error('Invalid move: Missing direction');
@@ -92,11 +112,22 @@ export const processMove = (
     throw new Error(`Invalid move direction: ${dir}`);
   }
 
+  // Server-side lock: never override an existing known cardinal/intercardinal destination
+  const existingKnownTarget = !isSpecial ? getKnownNeighbors(state, fromId)[dir] : undefined;
+  const toId = existingKnownTarget || moveData.toId;
+
   if (!state.mapAdjacency[fromId]) state.mapAdjacency[fromId] = [];
   const existingEdge = state.mapAdjacency[fromId].find(e => e.id === toId && e.dir === dir);
   if (existingEdge) {
     if (!existingEdge.characters.includes(charName)) existingEdge.characters.push(charName);
     existingEdge.traversalCount = (existingEdge.traversalCount ?? 1) + 1;
+    if (!existingEdge.characterCounts) {
+      existingEdge.characterCounts = {};
+      for (const c of existingEdge.characters) {
+        existingEdge.characterCounts[c] = c === charName ? 0 : 1;
+      }
+    }
+    existingEdge.characterCounts[charName] = (existingEdge.characterCounts[charName] ?? 1) + 1;
   } else {
     state.mapAdjacency[fromId].push({ id: toId, dir, characters: [charName] });
   }
@@ -155,6 +186,7 @@ export const processMove = (
   }
 
   updateGlobalCoords(state);
+  return toId;
 };
 
 const isNodeReferenced = (state: GameState, nodeId: string): boolean => {
@@ -204,16 +236,16 @@ export const undoMove = (
   const totalCrossings = forwardCount + reverseCount;
 
   if (forwardEdge && forwardIdx >= 0) {
-    if (totalCrossings <= 1 && forwardCount <= 1) {
-      // Only erase the connection if this is the only time the edge has been crossed
+    if (forwardCount <= 1) {
+      // Remove this single-traversal forward directed edge
       forwardList.splice(forwardIdx, 1);
       if (forwardList.length === 0) {
         delete state.mapAdjacency[fromId];
       }
-      edgeRemoved = true;
+      // The undirected connection is only completely erased if reverseCount is also 0 (totalCrossings <= 1)
+      edgeRemoved = totalCrossings <= 1;
 
-      // Clean up destination node if it is now completely orphaned
-      if (state.nodes[toId] && !isNodeReferenced(state, toId)) {
+      if (edgeRemoved && state.nodes[toId] && !isNodeReferenced(state, toId)) {
         const orphanGroupId = state.nodes[toId].groupId;
         delete state.nodes[toId];
         const groupHasRemainingNodes = Object.values(state.nodes).some(n => n.groupId === orphanGroupId);
@@ -221,10 +253,19 @@ export const undoMove = (
           delete state.groups[orphanGroupId];
         }
       }
-    } else if (forwardEdge.traversalCount && forwardEdge.traversalCount > 1) {
-      forwardEdge.traversalCount -= 1;
-      if (forwardEdge.traversalCount === 1) {
-        delete forwardEdge.traversalCount;
+    } else {
+      if (forwardEdge.traversalCount && forwardEdge.traversalCount > 1) {
+        forwardEdge.traversalCount -= 1;
+        if (forwardEdge.traversalCount === 1) {
+          delete forwardEdge.traversalCount;
+        }
+      }
+      if (forwardEdge.characterCounts && forwardEdge.characterCounts[charName]) {
+        forwardEdge.characterCounts[charName] -= 1;
+        if (forwardEdge.characterCounts[charName] <= 0) {
+          delete forwardEdge.characterCounts[charName];
+          forwardEdge.characters = forwardEdge.characters.filter(c => c !== charName);
+        }
       }
     }
   }

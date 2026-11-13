@@ -30,6 +30,22 @@ function parseKnownNeighbors(raw: unknown): Partial<Record<CompassDirection, str
   return result;
 }
 
+function parseKnownEdgesMap(
+  raw: unknown
+): Record<string, Partial<Record<CompassDirection, string>>> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const result: Record<string, Partial<Record<CompassDirection, string>>> = {};
+  for (const [nodeId, neighborsRaw] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof nodeId === 'string' && nodeId.length > 0) {
+      const parsed = parseKnownNeighbors(neighborsRaw);
+      if (Object.keys(parsed).length > 0) {
+        result[nodeId] = parsed;
+      }
+    }
+  }
+  return result;
+}
+
 // Merge incoming neighbors without overriding any already-known cardinal/intercardinal destination
 function mergeWithoutOverriding(
   existing: Partial<Record<CompassDirection, string>> | undefined,
@@ -72,6 +88,18 @@ export const useGameState = () => {
   const latestState = useRef(gameState);
   useEffect(() => { latestState.current = gameState; }, [gameState]);
 
+  // Subscribe to real-time MAP_SYNC broadcasts from HostMap (when any player moves or undoes a move)
+  useEffect(() => {
+    return GameService.onMapSync((rawKnownEdges) => {
+      const authoritativeEdges = parseKnownEdgesMap(rawKnownEdges);
+      if (!authoritativeEdges) return;
+      setGameState((prev) => ({
+        ...prev,
+        knownEdges: authoritativeEdges,
+      }));
+    });
+  }, []);
+
   // Sync locks
   const syncLock = useRef({ timer: null as ReturnType<typeof setTimeout> | null, isAwaitingAck: false, pendingSync: false });
 
@@ -83,9 +111,10 @@ export const useGameState = () => {
       const existingLoc = typeof data.location === 'string' ? data.location : null;
       const existingColor = typeof data.color === 'string' ? data.color : undefined;
       const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+      const serverEdgesMap = parseKnownEdgesMap(data.knownEdges);
 
       setGameState(prev => {
-        const nextEdges = { ...prev.knownEdges };
+        const nextEdges = serverEdgesMap ? { ...serverEdgesMap } : { ...prev.knownEdges };
         if (existingLoc && Object.keys(serverNeighbors).length > 0) {
           nextEdges[existingLoc] = mergeWithoutOverriding(nextEdges[existingLoc], serverNeighbors);
         }
@@ -112,9 +141,10 @@ export const useGameState = () => {
       const data = await GameService.crashLand(gameState.code, gameState.name, location, color);
       const confirmedLoc = typeof data.confirmedLocation === 'string' ? data.confirmedLocation : location;
       const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+      const serverEdgesMap = parseKnownEdgesMap(data.knownEdges);
 
       setGameState(prev => {
-        const nextEdges = { ...prev.knownEdges };
+        const nextEdges = serverEdgesMap ? { ...serverEdgesMap } : { ...prev.knownEdges };
         if (Object.keys(serverNeighbors).length > 0) {
           nextEdges[confirmedLoc] = mergeWithoutOverriding(nextEdges[confirmedLoc], serverNeighbors);
         }
@@ -135,9 +165,10 @@ export const useGameState = () => {
       const data = await GameService.move(gameState.code, gameState.name, fromLoc, targetLoc, direction);
       const nextLoc = typeof data.newLocation === 'string' ? data.newLocation : targetLoc;
       const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+      const serverEdgesMap = parseKnownEdgesMap(data.knownEdges);
 
       setGameState(prev => {
-        const nextEdges = { ...prev.knownEdges };
+        const nextEdges = serverEdgesMap ? { ...serverEdgesMap } : { ...prev.knownEdges };
         const nextCounts = { ...prev.edgeTraverseCounts };
         let edgeKey: string | null = null;
 
@@ -193,9 +224,10 @@ export const useGameState = () => {
       const revertedLoc = typeof data.revertedLocation === 'string' ? data.revertedLocation : last.fromLocation;
       const serverEdgeRemoved = data.edgeRemoved === true;
       const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+      const serverEdgesMap = parseKnownEdgesMap(data.knownEdges);
 
       setGameState(prev => {
-        const nextEdges = { ...prev.knownEdges };
+        const nextEdges = serverEdgesMap ? { ...serverEdgesMap } : { ...prev.knownEdges };
         const nextCounts = { ...prev.edgeTraverseCounts };
 
         if (isCompassDirection(last.direction) && last.edgeKey) {

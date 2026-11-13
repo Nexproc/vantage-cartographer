@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
-import Peer from 'peerjs';
+import Peer, { type DataConnection } from 'peerjs';
 import type { GameState, MovePayload } from '../types';
-import { processMove as applyMove, undoMove as revertMove, updateGlobalCoords as syncGlobalCoords, getKnownNeighbors, DIRS } from '../movement';
+import { processMove as applyMove, undoMove as revertMove, updateGlobalCoords as syncGlobalCoords, getKnownNeighbors, getAllKnownEdges, DIRS } from '../movement';
 
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -18,6 +18,7 @@ const HostMap: React.FC = () => {
         modeRef.current = mode;
     }, [mode]);
   const [penColor, setPenColor] = useState<string>('#ffffff');
+  const connectionsRef = useRef<Set<DataConnection>>(new Set());
   
   // Game State Ref (Mutable to avoid React re-renders killing 60fps canvas)
   const engine = useRef<GameState>({
@@ -131,9 +132,19 @@ const HostMap: React.FC = () => {
     ctx.restore();
   };
 
-  const processMove = (moveData: MovePayload) => {
-    applyMove(engine.current, moveData);
+  const processMove = (moveData: MovePayload): string => {
+    const resolvedToId = applyMove(engine.current, moveData);
     draw();
+    return resolvedToId;
+  };
+
+  const broadcastMapSync = () => {
+    const knownEdges = getAllKnownEdges(engine.current);
+    connectionsRef.current.forEach(clientConn => {
+      if (clientConn.open) {
+        clientConn.send({ type: 'MAP_SYNC', knownEdges });
+      }
+    });
   };
 
   const updateGlobalCoords = () => {
@@ -200,11 +211,19 @@ const HostMap: React.FC = () => {
 
     peer.on('connection', (conn) => {
         console.log('Mobile device connected via P2P.');
+        connectionsRef.current.add(conn);
+        conn.on('close', () => {
+          connectionsRef.current.delete(conn);
+        });
+        conn.on('error', () => {
+          connectionsRef.current.delete(conn);
+        });
         
         conn.on('data', (data: any) => {
           if (data.type === 'API_REQUEST') {
             const { endpoint, reqId, body } = data;
             let responseData = {};
+            let shouldBroadcast = false;
             try {
                 const state = engine.current;
                 
@@ -220,6 +239,7 @@ const HostMap: React.FC = () => {
                     location: locId,
                     color: existingChar?.color,
                     knownNeighbors: getKnownNeighbors(state, locId),
+                    knownEdges: getAllKnownEdges(state),
                   };
                 } 
                 
@@ -261,6 +281,7 @@ const HostMap: React.FC = () => {
                   responseData = {
                     confirmedLocation: requestedLocation,
                     knownNeighbors: getKnownNeighbors(state, requestedLocation),
+                    knownEdges: getAllKnownEdges(state),
                   };
                   draw();
                 } 
@@ -276,7 +297,7 @@ const HostMap: React.FC = () => {
                     throw new Error(`Invalid move: Missing fromId (${fromId}) or targetLocation (${targetLocation})`);
                   }
     
-                  processMove({
+                  const resolvedLocation = processMove({
                     charName: playerName,
                     fromId: fromId,
                     dir: direction,
@@ -284,9 +305,11 @@ const HostMap: React.FC = () => {
                   });
                   
                   responseData = {
-                    newLocation: targetLocation,
-                    knownNeighbors: getKnownNeighbors(state, targetLocation),
+                    newLocation: resolvedLocation,
+                    knownNeighbors: getKnownNeighbors(state, resolvedLocation),
+                    knownEdges: getAllKnownEdges(state),
                   };
+                  shouldBroadcast = true;
                 }
 
                 // --- ENDPOINT: /undo ---
@@ -309,7 +332,9 @@ const HostMap: React.FC = () => {
                     revertedLocation: fromLocation,
                     edgeRemoved,
                     knownNeighbors: getKnownNeighbors(state, fromLocation),
+                    knownEdges: getAllKnownEdges(state),
                   };
+                  shouldBroadcast = true;
                 }
     
                 // --- ENDPOINT: /resources ---
@@ -319,6 +344,9 @@ const HostMap: React.FC = () => {
                 }
     
                 conn.send({ type: 'API_RESPONSE', reqId, ok: true, data: responseData });
+                if (shouldBroadcast) {
+                  broadcastMapSync();
+                }
     
               } catch (error: any) {
                 console.error("[Host API] Error:", error.message);
