@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Peer from 'peerjs';
 import type { GameState, MovePayload } from '../types';
-import { processMove as applyMove, updateGlobalCoords as syncGlobalCoords, DIRS } from '../movement';
+import { processMove as applyMove, updateGlobalCoords as syncGlobalCoords, getKnownNeighbors, DIRS } from '../movement';
 
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -211,8 +211,16 @@ const HostMap: React.FC = () => {
                 // --- ENDPOINT: /connect ---
                 if (endpoint === '/connect') {
                   const { playerName } = body;
-                  const hasLoc = !!state.characters[playerName]?.location_id;
-                  responseData = { success: true, hasLocation: hasLoc };
+                  const existingChar = state.characters[playerName];
+                  const locId = existingChar?.location_id || null;
+                  const hasLoc = !!locId;
+                  responseData = {
+                    success: true,
+                    hasLocation: hasLoc,
+                    location: locId,
+                    color: existingChar?.color,
+                    knownNeighbors: getKnownNeighbors(state, locId),
+                  };
                 } 
                 
                 // --- ENDPOINT: /crashland ---
@@ -250,7 +258,10 @@ const HostMap: React.FC = () => {
                   }
                   
                   updateGlobalCoords();
-                  responseData = { confirmedLocation: requestedLocation };
+                  responseData = {
+                    confirmedLocation: requestedLocation,
+                    knownNeighbors: getKnownNeighbors(state, requestedLocation),
+                  };
                   draw();
                 } 
                 
@@ -272,7 +283,10 @@ const HostMap: React.FC = () => {
                     toId: targetLocation,
                   });
                   
-                  responseData = { newLocation: targetLocation };
+                  responseData = {
+                    newLocation: targetLocation,
+                    knownNeighbors: getKnownNeighbors(state, targetLocation),
+                  };
                 }
     
                 // --- ENDPOINT: /resources ---

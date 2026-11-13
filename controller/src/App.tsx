@@ -324,10 +324,14 @@ const NormalScreen: React.FC<{
     }
   };
 
+  const currentKnownNeighbors = gameState.location
+    ? gameState.knownEdges[gameState.location] ?? {}
+    : {};
+
   const bearingLabel = !selectedDirection
     ? 'Select direction'
     : isPortal
-      ? 'Portal / Door'
+      ? 'Portal / Enter'
       : `Bearing ${selectedDirection}`;
 
   return (
@@ -426,7 +430,7 @@ const NormalScreen: React.FC<{
               </span>
             </div>
 
-            {/* Fluid Tactile 8-Point + Portal Swirl Compass Rose */}
+            {/* Fluid Tactile 8-Point + Portal/Enter Compass Rose */}
             <div
               className={`compass-stage ${!hasDirection ? 'compass-stage--awaiting' : ''}`}
               role="group"
@@ -487,6 +491,8 @@ const NormalScreen: React.FC<{
               {COMPASS_BEARINGS.map((dir) => {
                 const isSelected = selectedDirection === dir;
                 const centerPortal = dir === 'C';
+                const knownDest = !centerPortal ? currentKnownNeighbors[dir] : undefined;
+
                 return (
                   <button
                     key={dir}
@@ -494,15 +500,37 @@ const NormalScreen: React.FC<{
                     type="button"
                     className={`compass-node compass-pos-${dir} ${
                       centerPortal ? 'compass-node--portal' : ''
-                    }`}
-                    aria-label={centerPortal ? 'Portal or Door movement' : `Direction ${dir}`}
+                    } ${knownDest ? 'compass-node--known' : ''}`}
+                    aria-label={
+                      centerPortal
+                        ? 'Portal or Enter movement'
+                        : knownDest
+                          ? `Direction ${dir} (known location #${knownDest})`
+                          : `Direction ${dir}`
+                    }
                     aria-pressed={isSelected}
                     onClick={() => {
-                      setSelectedDirection((prev) => (prev === dir ? null : dir));
+                      if (selectedDirection === dir) {
+                        setSelectedDirection(null);
+                      } else {
+                        setSelectedDirection(dir);
+                        if (!centerPortal && knownDest) {
+                          setTargetLoc(knownDest);
+                        }
+                      }
                       if (moveError) setMoveError(null);
                     }}
                   >
-                    {centerPortal ? <PortalDoorIcon /> : dir}
+                    {centerPortal ? (
+                      <PortalDoorIcon />
+                    ) : (
+                      <>
+                        <span className="compass-node__dir">{dir}</span>
+                        {knownDest && (
+                          <span className="compass-node__dest">#{knownDest}</span>
+                        )}
+                      </>
+                    )}
                   </button>
                 );
               })}
@@ -571,7 +599,7 @@ const NormalScreen: React.FC<{
             ) : isPortal ? (
               <>
                 <PortalDoorIcon inline />
-                <span>Portal</span>
+                <span>Portal / Enter</span>
               </>
             ) : (
               `Move ${selectedDirection}`

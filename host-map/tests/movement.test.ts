@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { processMove, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
+import { processMove, getKnownNeighbors, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
 import type { GameState } from '../src/types.ts';
 
 function createInitialState(): GameState {
@@ -239,6 +239,35 @@ describe('HostMap Movement Logic (processMove)', () => {
 
     it('defines all 8 compass directions in DIRS', () => {
       assert.deepEqual(Object.keys(DIRS).sort(), ['E', 'N', 'NE', 'NW', 'S', 'SE', 'SW', 'W']);
+    });
+
+    it('returns bidirectional known non-special neighbors and excludes Special moves', () => {
+      const state = createInitialState();
+      seedStartNode(state, 'Alice', '100', 200, 200);
+
+      // 100 --N--> 205
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '205' });
+      // 205 --SE--> 310
+      processMove(state, { charName: 'Alice', fromId: '205', dir: 'SE', toId: '310' });
+      // 205 --Special--> 999 (must NOT appear in known compass neighbors)
+      processMove(state, { charName: 'Alice', fromId: '205', dir: 'Special', toId: '999' });
+
+      assert.deepEqual(getKnownNeighbors(state, '100'), { N: '205' });
+      assert.deepEqual(getKnownNeighbors(state, '205'), { S: '100', SE: '310' });
+      assert.deepEqual(getKnownNeighbors(state, '310'), { NW: '205' });
+      assert.deepEqual(getKnownNeighbors(state, '999'), {});
+    });
+
+    it('gives explicit outgoing edges precedence over inferred reverse edges', () => {
+      const state = createInitialState();
+      seedStartNode(state, 'Alice', '100', 200, 200);
+
+      // 100 --N--> 205 (implies 205 --S--> 100 unless overridden)
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '205' });
+      // Explicit outgoing 205 --S--> 404 overrides inferred 100
+      processMove(state, { charName: 'Alice', fromId: '205', dir: 'S', toId: '404' });
+
+      assert.equal(getKnownNeighbors(state, '205').S, '404');
     });
   });
 });

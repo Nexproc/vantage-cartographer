@@ -1,10 +1,43 @@
 import { useState, useRef, useEffect } from 'react';
-import type { GameState, ResourceColor, Direction } from './types';
+import type { GameState, ResourceColor, Direction, CompassDirection } from './types';
 import { GameService } from './GameService';
 
+const OPPOSITE_COMPASS_DIR: Record<CompassDirection, CompassDirection> = {
+  N: 'S',
+  S: 'N',
+  E: 'W',
+  W: 'E',
+  NE: 'SW',
+  SW: 'NE',
+  NW: 'SE',
+  SE: 'NW',
+};
+
+const COMPASS_DIR_SET = new Set<string>(['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']);
+
+function isCompassDirection(val: string | null | undefined): val is CompassDirection {
+  return typeof val === 'string' && COMPASS_DIR_SET.has(val);
+}
+
+function parseKnownNeighbors(raw: unknown): Partial<Record<CompassDirection, string>> {
+  if (!raw || typeof raw !== 'object') return {};
+  const result: Partial<Record<CompassDirection, string>> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (isCompassDirection(k) && typeof v === 'string' && v.length > 0) {
+      result[k] = v;
+    }
+  }
+  return result;
+}
+
 const initialGameState: GameState = {
-  code: '', name: '', color: '#10b981', location: null, direction: null,
-  resources: { red: 0, blue: 0, green: 0, yellow: 0, purple: 0, orange: 0 }
+  code: '',
+  name: '',
+  color: '#10b981',
+  location: null,
+  direction: null,
+  resources: { red: 0, blue: 0, green: 0, yellow: 0, purple: 0, orange: 0 },
+  knownEdges: {},
 };
 
 export const useGameState = () => {
@@ -24,8 +57,24 @@ export const useGameState = () => {
     const cleanName = name.trim();
     try {
       const data = await GameService.connect(cleanCode, cleanName);
+      const existingLoc = typeof data.location === 'string' ? data.location : null;
+      const existingColor = typeof data.color === 'string' ? data.color : undefined;
+      const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
 
-      setGameState(prev => ({ ...prev, code: cleanCode, name: cleanName }));
+      setGameState(prev => {
+        const nextEdges = { ...prev.knownEdges };
+        if (existingLoc && Object.keys(serverNeighbors).length > 0) {
+          nextEdges[existingLoc] = { ...(nextEdges[existingLoc] ?? {}), ...serverNeighbors };
+        }
+        return {
+          ...prev,
+          code: cleanCode,
+          name: cleanName,
+          location: existingLoc ?? prev.location,
+          color: existingColor ?? prev.color,
+          knownEdges: nextEdges,
+        };
+      });
       setActiveScreen(data.hasLocation ? 'normal' : 'setup');
       return true;
     } catch (e) {
@@ -38,7 +87,15 @@ export const useGameState = () => {
     try {
       const data = await GameService.crashLand(gameState.code, gameState.name, location, color);
       const confirmedLoc = typeof data.confirmedLocation === 'string' ? data.confirmedLocation : location;
-      setGameState(prev => ({ ...prev, location: confirmedLoc, color }));
+      const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+
+      setGameState(prev => {
+        const nextEdges = { ...prev.knownEdges };
+        if (Object.keys(serverNeighbors).length > 0) {
+          nextEdges[confirmedLoc] = { ...(nextEdges[confirmedLoc] ?? {}), ...serverNeighbors };
+        }
+        return { ...prev, location: confirmedLoc, color, knownEdges: nextEdges };
+      });
       setActiveScreen('normal');
       return true;
     } catch (e) {
@@ -49,9 +106,38 @@ export const useGameState = () => {
 
   const move = async (targetLoc: string, direction: Direction): Promise<boolean> => {
     try {
-      const data = await GameService.move(gameState.code, gameState.name, gameState.location, targetLoc, direction);
+      const fromLoc = gameState.location;
+      const data = await GameService.move(gameState.code, gameState.name, fromLoc, targetLoc, direction);
       const nextLoc = typeof data.newLocation === 'string' ? data.newLocation : targetLoc;
-      setGameState(prev => ({ ...prev, location: nextLoc, direction }));
+      const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+
+      setGameState(prev => {
+        const nextEdges = { ...prev.knownEdges };
+
+        // Record non-special edge bidirectionally (with explicit outgoing taking precedence)
+        if (fromLoc && isCompassDirection(direction)) {
+          nextEdges[fromLoc] = {
+            ...(nextEdges[fromLoc] ?? {}),
+            [direction]: nextLoc,
+          };
+          const oppDir = OPPOSITE_COMPASS_DIR[direction];
+          const existingTargetEdges = nextEdges[nextLoc] ?? {};
+          nextEdges[nextLoc] = {
+            ...existingTargetEdges,
+            // Only set reverse edge if an explicit outgoing edge wasn't already recorded
+            [oppDir]: existingTargetEdges[oppDir] ?? fromLoc,
+          };
+        }
+
+        if (Object.keys(serverNeighbors).length > 0) {
+          nextEdges[nextLoc] = {
+            ...(nextEdges[nextLoc] ?? {}),
+            ...serverNeighbors,
+          };
+        }
+
+        return { ...prev, location: nextLoc, direction, knownEdges: nextEdges };
+      });
       return true;
     } catch (e) {
       console.error(e);

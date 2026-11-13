@@ -1,5 +1,6 @@
 export type ResourceColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange';
-export type Direction = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW' | 'C' | null;
+export type CompassDirection = 'N' | 'NE' | 'E' | 'SE' | 'S' | 'SW' | 'W' | 'NW';
+export type Direction = CompassDirection | 'C' | null;
 
 export interface Resources {
   red: number;
@@ -17,4 +18,5 @@ export interface GameState {
   location: string | null;
   direction: Direction;
   resources: Resources;
+  knownEdges: Record<string, Partial<Record<CompassDirection, string>>>;
 }

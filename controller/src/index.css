@@ -784,12 +784,40 @@ body {
   font-size: 0.75rem;
   font-weight: 700;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1px;
   cursor: pointer;
-  padding: 0;
+  padding: 2px 3px;
   box-shadow: var(--shadow-control);
   transition: transform 120ms ease, background-color 130ms ease, border-color 130ms ease, color 130ms ease, box-shadow 200ms ease;
+}
+
+.compass-node--known {
+  border-color: rgba(16, 185, 129, 0.34);
+}
+
+.compass-node__dir {
+  line-height: 1;
+}
+
+.compass-node__dest {
+  font-size: 0.5625rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  color: var(--accent-primary);
+  opacity: 0.92;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compass-node[aria-pressed='true'] .compass-node__dest {
+  color: var(--accent-primary-ink);
+  opacity: 0.86;
 }
 
 /* Gentle breathing shadow pulse (50% floor -> 100% peak) while no direction is selected */
@@ -856,6 +884,7 @@ body {
 }
 
 .compass-node--portal {
+  flex-direction: row;
   border-radius: 999px;
   width: calc(var(--node-size) + 20px);
   height: var(--node-size);

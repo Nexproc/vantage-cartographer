@@ -11,6 +11,49 @@ export const DIRS: Record<string, { x: number; y: number }> = {
   SW: { x: -1, y: 1 },
 };
 
+export const OPPOSITE_DIRS: Record<string, string> = {
+  N: 'S',
+  S: 'N',
+  E: 'W',
+  W: 'E',
+  NE: 'SW',
+  SW: 'NE',
+  NW: 'SE',
+  SE: 'NW',
+};
+
+export const getKnownNeighbors = (
+  state: GameState,
+  locationId: string | null | undefined
+): Record<string, string> => {
+  if (!locationId) return {};
+  const neighbors: Record<string, string> = {};
+
+  // 1. Incoming non-special edges (u --dir--> locationId implies locationId --opposite(dir)--> u)
+  for (const fromNodeId in state.mapAdjacency) {
+    for (const edge of state.mapAdjacency[fromNodeId]) {
+      if (edge.id === locationId && !edge.dir.startsWith('Special')) {
+        const opp = OPPOSITE_DIRS[edge.dir];
+        if (opp) {
+          neighbors[opp] = fromNodeId;
+        }
+      }
+    }
+  }
+
+  // 2. Explicit outgoing non-special edges from locationId take precedence
+  const outgoing = state.mapAdjacency[locationId];
+  if (outgoing) {
+    for (const edge of outgoing) {
+      if (!edge.dir.startsWith('Special') && DIRS[edge.dir]) {
+        neighbors[edge.dir] = edge.id;
+      }
+    }
+  }
+
+  return neighbors;
+};
+
 export const GRID_SIZE = 80;
 export const SPECIAL_OFFSET = 120;
 
