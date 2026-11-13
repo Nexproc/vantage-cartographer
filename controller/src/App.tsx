@@ -303,21 +303,32 @@ const NormalScreen: React.FC<{
     };
   }, []);
 
+  const currentKnownNeighbors = gameState.location
+    ? gameState.knownEdges[gameState.location] ?? {}
+    : {};
+
+  const lockedDestination =
+    selectedDirection && selectedDirection !== 'C'
+      ? currentKnownNeighbors[selectedDirection]
+      : undefined;
+  const isLocationLocked = Boolean(lockedDestination);
+  const effectiveTargetLoc = lockedDestination ?? targetLoc;
+
   const isPortal = selectedDirection === 'C';
   const hasDirection = selectedDirection !== null;
-  const hasLocation = /^\d{2,4}$/.test(targetLoc);
+  const hasLocation = /^\d{2,4}$/.test(effectiveTargetLoc);
   const canMove = hasDirection && hasLocation;
   const canUndo = gameState.lastMove !== null;
 
   const handleMoveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDirection || !/^\d{2,4}$/.test(targetLoc)) {
+    if (!selectedDirection || !/^\d{2,4}$/.test(effectiveTargetLoc)) {
       return;
     }
 
     setMoveError(null);
     setMoving(true);
-    const ok = await onMove(targetLoc, selectedDirection);
+    const ok = await onMove(effectiveTargetLoc, selectedDirection);
     setMoving(false);
 
     if (ok) {
@@ -342,15 +353,13 @@ const NormalScreen: React.FC<{
     }
   };
 
-  const currentKnownNeighbors = gameState.location
-    ? gameState.knownEdges[gameState.location] ?? {}
-    : {};
-
   const bearingLabel = !selectedDirection
     ? 'Select direction'
     : isPortal
       ? 'Portal / Enter'
-      : `Bearing ${selectedDirection}`;
+      : lockedDestination
+        ? `Bearing ${selectedDirection} -> #${lockedDestination}`
+        : `Bearing ${selectedDirection}`;
 
   return (
     <>
@@ -558,10 +567,15 @@ const NormalScreen: React.FC<{
                     onClick={() => {
                       if (selectedDirection === dir) {
                         setSelectedDirection(null);
+                        if (isLocationLocked) {
+                          setTargetLoc('');
+                        }
                       } else {
                         setSelectedDirection(dir);
                         if (!centerPortal && knownDest) {
                           setTargetLoc(knownDest);
+                        } else if (isLocationLocked) {
+                          setTargetLoc('');
                         }
                       }
                       if (moveError) setMoveError(null);
@@ -602,30 +616,59 @@ const NormalScreen: React.FC<{
 
         <form
           id="move-form"
-          className={`composer-pill ${isPortal ? 'composer-pill--portal' : ''}`}
+          className={`composer-pill ${isPortal ? 'composer-pill--portal' : ''} ${
+            isLocationLocked ? 'composer-pill--locked' : ''
+          }`}
           onSubmit={handleMoveSubmit}
           noValidate
         >
-          <span className="composer-hash" aria-hidden="true">
-            #
-          </span>
+          {isLocationLocked ? (
+            <svg
+              className="composer-lock-icon"
+              viewBox="0 0 20 20"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="4.5" y="9" width="11" height="8" rx="2" />
+              <path d="M 7 9 V 6.5 A 3 3 0 0 1 13 6.5 V 9" />
+            </svg>
+          ) : (
+            <span className="composer-hash" aria-hidden="true">
+              #
+            </span>
+          )}
           <input
             id="target-location-input"
-            className="composer-input"
+            className={`composer-input ${isLocationLocked ? 'composer-input--locked' : ''}`}
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
             maxLength={4}
             placeholder="Location #"
-            aria-label="Destination location number"
+            aria-label={
+              isLocationLocked
+                ? `Locked known destination #${effectiveTargetLoc}`
+                : 'Destination location number'
+            }
             enterKeyHint="send"
-            value={targetLoc}
+            readOnly={isLocationLocked}
+            value={effectiveTargetLoc}
             onChange={(e) => {
+              if (isLocationLocked) return;
               const digits = e.target.value.replace(/\D/g, '').slice(0, 4);
               setTargetLoc(digits);
               if (moveError) setMoveError(null);
             }}
           />
+          {isLocationLocked && (
+            <span className="composer-locked-badge" aria-hidden="true">
+              KNOWN
+            </span>
+          )}
           <button
             id="submit-move-btn"
             type="submit"

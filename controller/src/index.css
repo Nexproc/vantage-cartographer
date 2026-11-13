@@ -1095,6 +1095,17 @@ body {
   flex-shrink: 0;
 }
 
+.composer-lock-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--accent-primary);
+  flex-shrink: 0;
+}
+
+.composer-pill--locked {
+  border-color: rgba(16, 185, 129, 0.38);
+}
+
 .composer-input {
   flex: 1 1 0%;
   min-width: 0;
@@ -1108,6 +1119,26 @@ body {
   letter-spacing: 0.08em;
   outline: none;
   padding: 0;
+}
+
+.composer-input--locked {
+  color: var(--accent-primary);
+  cursor: default;
+  user-select: none;
+}
+
+.composer-locked-badge {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--accent-primary);
+  background: var(--accent-primary-soft);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  padding: 3px 7px;
+  border-radius: 999px;
+  user-select: none;
 }
 
 .composer-input::placeholder {
