@@ -49,11 +49,11 @@ const App: React.FC = () => {
 
 const MARKER_SWATCHES = [
   { label: 'Emerald', hex: '#10b981' },
-  { label: 'Amber', hex: '#f59e0b' },
   { label: 'Sky', hex: '#38bdf8' },
+  { label: 'Violet', hex: '#c084fc' },
   { label: 'Coral', hex: '#fb7185' },
-  { label: 'Lime', hex: '#a3e635' },
-  { label: 'Tangerine', hex: '#fb923c' },
+  { label: 'Orange', hex: '#fb923c' },
+  { label: 'Yellow', hex: '#fde047' },
   { label: 'Ice', hex: '#e2e8f0' },
 ];
 
