@@ -154,6 +154,11 @@ export class GameService {
     return this.request('/move', { gameCode: code, playerName: name, currentLocation: currentLoc, targetLocation: targetLoc, direction: payloadDir });
   }
 
+  static async undo(code: string, name: string, fromLoc: string, toLoc: string, direction: Exclude<Direction, null>) {
+    const payloadDir = direction === 'C' ? 'Special' : direction;
+    return this.request('/undo', { gameCode: code, playerName: name, fromLocation: fromLoc, toLocation: toLoc, direction: payloadDir });
+  }
+
   static async syncResources(code: string, name: string, resources: Resources) {
     return this.request('/resources', { gameCode: code, playerName: name, resources });
   }

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Peer from 'peerjs';
 import type { GameState, MovePayload } from '../types';
-import { processMove as applyMove, updateGlobalCoords as syncGlobalCoords, getKnownNeighbors, DIRS } from '../movement';
+import { processMove as applyMove, undoMove as revertMove, updateGlobalCoords as syncGlobalCoords, getKnownNeighbors, DIRS } from '../movement';
 
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -286,6 +286,29 @@ const HostMap: React.FC = () => {
                   responseData = {
                     newLocation: targetLocation,
                     knownNeighbors: getKnownNeighbors(state, targetLocation),
+                  };
+                }
+
+                // --- ENDPOINT: /undo ---
+                else if (endpoint === '/undo') {
+                  const { playerName, fromLocation, toLocation, direction } = body;
+
+                  if (!fromLocation || !toLocation || !direction) {
+                    throw new Error(`Invalid undo: Missing fromLocation (${fromLocation}), toLocation (${toLocation}), or direction (${direction})`);
+                  }
+
+                  const { edgeRemoved } = revertMove(state, {
+                    charName: playerName,
+                    fromId: fromLocation,
+                    dir: direction,
+                    toId: toLocation,
+                  });
+                  draw();
+
+                  responseData = {
+                    revertedLocation: fromLocation,
+                    edgeRemoved,
+                    knownNeighbors: getKnownNeighbors(state, fromLocation),
                   };
                 }
     

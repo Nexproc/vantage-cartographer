@@ -518,6 +518,56 @@ body {
   50% { opacity: 0.35; }
 }
 
+.status-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.undo-btn {
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--bg-control);
+  border: 1px solid var(--border-interactive);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+
+.undo-btn:hover:not(:disabled) {
+  background: var(--bg-control-hover);
+  color: var(--text-primary);
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.undo-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.undo-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.undo-btn:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.undo-btn__icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
 .location-readout {
   display: flex;
   align-items: baseline;

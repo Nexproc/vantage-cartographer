@@ -30,6 +30,27 @@ function parseKnownNeighbors(raw: unknown): Partial<Record<CompassDirection, str
   return result;
 }
 
+// Merge incoming neighbors without overriding any already-known cardinal/intercardinal destination
+function mergeWithoutOverriding(
+  existing: Partial<Record<CompassDirection, string>> | undefined,
+  incoming: Partial<Record<CompassDirection, string>>
+): Partial<Record<CompassDirection, string>> {
+  const merged: Partial<Record<CompassDirection, string>> = { ...(existing ?? {}) };
+  for (const [dir, dest] of Object.entries(incoming) as Array<[CompassDirection, string | undefined]>) {
+    if (dest && !merged[dir]) {
+      merged[dir] = dest;
+    }
+  }
+  return merged;
+}
+
+function canonicalEdgeKey(fromLoc: string, dir: CompassDirection, toLoc: string): string {
+  const oppDir = OPPOSITE_COMPASS_DIR[dir];
+  const a = `${fromLoc}:${dir}:${toLoc}`;
+  const b = `${toLoc}:${oppDir}:${fromLoc}`;
+  return a < b ? a : b;
+}
+
 const initialGameState: GameState = {
   code: '',
   name: '',
@@ -38,6 +59,8 @@ const initialGameState: GameState = {
   direction: null,
   resources: { red: 0, blue: 0, green: 0, yellow: 0, purple: 0, orange: 0 },
   knownEdges: {},
+  edgeTraverseCounts: {},
+  lastMove: null,
 };
 
 export const useGameState = () => {
@@ -64,7 +87,7 @@ export const useGameState = () => {
       setGameState(prev => {
         const nextEdges = { ...prev.knownEdges };
         if (existingLoc && Object.keys(serverNeighbors).length > 0) {
-          nextEdges[existingLoc] = { ...(nextEdges[existingLoc] ?? {}), ...serverNeighbors };
+          nextEdges[existingLoc] = mergeWithoutOverriding(nextEdges[existingLoc], serverNeighbors);
         }
         return {
           ...prev,
@@ -73,6 +96,7 @@ export const useGameState = () => {
           location: existingLoc ?? prev.location,
           color: existingColor ?? prev.color,
           knownEdges: nextEdges,
+          lastMove: null,
         };
       });
       setActiveScreen(data.hasLocation ? 'normal' : 'setup');
@@ -92,9 +116,9 @@ export const useGameState = () => {
       setGameState(prev => {
         const nextEdges = { ...prev.knownEdges };
         if (Object.keys(serverNeighbors).length > 0) {
-          nextEdges[confirmedLoc] = { ...(nextEdges[confirmedLoc] ?? {}), ...serverNeighbors };
+          nextEdges[confirmedLoc] = mergeWithoutOverriding(nextEdges[confirmedLoc], serverNeighbors);
         }
-        return { ...prev, location: confirmedLoc, color, knownEdges: nextEdges };
+        return { ...prev, location: confirmedLoc, color, knownEdges: nextEdges, lastMove: null };
       });
       setActiveScreen('normal');
       return true;
@@ -105,6 +129,7 @@ export const useGameState = () => {
   };
 
   const move = async (targetLoc: string, direction: Direction): Promise<boolean> => {
+    if (!direction) return false;
     try {
       const fromLoc = gameState.location;
       const data = await GameService.move(gameState.code, gameState.name, fromLoc, targetLoc, direction);
@@ -113,30 +138,101 @@ export const useGameState = () => {
 
       setGameState(prev => {
         const nextEdges = { ...prev.knownEdges };
+        const nextCounts = { ...prev.edgeTraverseCounts };
+        let edgeKey: string | null = null;
 
-        // Record non-special edge bidirectionally (with explicit outgoing taking precedence)
+        // Record non-special edge bidirectionally WITHOUT overriding existing known directions
         if (fromLoc && isCompassDirection(direction)) {
-          nextEdges[fromLoc] = {
-            ...(nextEdges[fromLoc] ?? {}),
-            [direction]: nextLoc,
-          };
+          edgeKey = canonicalEdgeKey(fromLoc, direction, nextLoc);
+          nextCounts[edgeKey] = (nextCounts[edgeKey] ?? 0) + 1;
+
+          nextEdges[fromLoc] = mergeWithoutOverriding(nextEdges[fromLoc], { [direction]: nextLoc });
           const oppDir = OPPOSITE_COMPASS_DIR[direction];
-          const existingTargetEdges = nextEdges[nextLoc] ?? {};
-          nextEdges[nextLoc] = {
-            ...existingTargetEdges,
-            // Only set reverse edge if an explicit outgoing edge wasn't already recorded
-            [oppDir]: existingTargetEdges[oppDir] ?? fromLoc,
-          };
+          nextEdges[nextLoc] = mergeWithoutOverriding(nextEdges[nextLoc], { [oppDir]: fromLoc });
         }
 
         if (Object.keys(serverNeighbors).length > 0) {
-          nextEdges[nextLoc] = {
-            ...(nextEdges[nextLoc] ?? {}),
-            ...serverNeighbors,
-          };
+          nextEdges[nextLoc] = mergeWithoutOverriding(nextEdges[nextLoc], serverNeighbors);
         }
 
-        return { ...prev, location: nextLoc, direction, knownEdges: nextEdges };
+        return {
+          ...prev,
+          location: nextLoc,
+          direction,
+          knownEdges: nextEdges,
+          edgeTraverseCounts: nextCounts,
+          lastMove: fromLoc
+            ? {
+                fromLocation: fromLoc,
+                toLocation: nextLoc,
+                direction,
+                edgeKey,
+              }
+            : null,
+        };
+      });
+      return true;
+    } catch (e) {
+      console.error(e);
+      return false;
+    }
+  };
+
+  const undoMove = async (): Promise<boolean> => {
+    const last = gameState.lastMove;
+    if (!last) return false;
+
+    try {
+      const data = await GameService.undo(
+        gameState.code,
+        gameState.name,
+        last.fromLocation,
+        last.toLocation,
+        last.direction
+      );
+      const revertedLoc = typeof data.revertedLocation === 'string' ? data.revertedLocation : last.fromLocation;
+      const serverEdgeRemoved = data.edgeRemoved === true;
+      const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
+
+      setGameState(prev => {
+        const nextEdges = { ...prev.knownEdges };
+        const nextCounts = { ...prev.edgeTraverseCounts };
+
+        if (isCompassDirection(last.direction) && last.edgeKey) {
+          const prevCount = nextCounts[last.edgeKey] ?? 1;
+          const onlyCrossedOnce = prevCount <= 1 && (data.edgeRemoved === undefined || serverEdgeRemoved);
+
+          if (onlyCrossedOnce) {
+            delete nextCounts[last.edgeKey];
+            const fromMap = { ...(nextEdges[last.fromLocation] ?? {}) };
+            if (fromMap[last.direction] === last.toLocation) {
+              delete fromMap[last.direction];
+            }
+            nextEdges[last.fromLocation] = fromMap;
+
+            const oppDir = OPPOSITE_COMPASS_DIR[last.direction];
+            const toMap = { ...(nextEdges[last.toLocation] ?? {}) };
+            if (toMap[oppDir] === last.fromLocation) {
+              delete toMap[oppDir];
+            }
+            nextEdges[last.toLocation] = toMap;
+          } else {
+            nextCounts[last.edgeKey] = Math.max(1, prevCount - 1);
+          }
+        }
+
+        if (Object.keys(serverNeighbors).length > 0) {
+          nextEdges[revertedLoc] = mergeWithoutOverriding(nextEdges[revertedLoc], serverNeighbors);
+        }
+
+        return {
+          ...prev,
+          location: revertedLoc,
+          direction: null,
+          knownEdges: nextEdges,
+          edgeTraverseCounts: nextCounts,
+          lastMove: null,
+        };
       });
       return true;
     } catch (e) {
@@ -179,5 +275,5 @@ export const useGameState = () => {
     }
   };
 
-  return { activeScreen, gameState, isSyncing, connect, crashLand, move, adjustResource };
+  return { activeScreen, gameState, isSyncing, connect, crashLand, move, undoMove, adjustResource };
 };

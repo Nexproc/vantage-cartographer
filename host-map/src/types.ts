@@ -18,6 +18,7 @@ export interface Point {
     id: string;
     dir: string;
     characters: string[];
+    traversalCount?: number;
   }
   
   export interface MapNode {

@@ -11,6 +11,13 @@ export interface Resources {
   orange: number;
 }
 
+export interface LastMoveRecord {
+  fromLocation: string;
+  toLocation: string;
+  direction: Exclude<Direction, null>;
+  edgeKey: string | null;
+}
+
 export interface GameState {
   code: string;
   name: string;
@@ -19,4 +26,6 @@ export interface GameState {
   direction: Direction;
   resources: Resources;
   knownEdges: Record<string, Partial<Record<CompassDirection, string>>>;
+  edgeTraverseCounts: Record<string, number>;
+  lastMove: LastMoveRecord | null;
 }

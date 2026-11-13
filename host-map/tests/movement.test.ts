@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { processMove, getKnownNeighbors, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
+import { processMove, undoMove, getKnownNeighbors, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
 import type { GameState } from '../src/types.ts';
 
 function createInitialState(): GameState {
@@ -258,16 +258,50 @@ describe('HostMap Movement Logic (processMove)', () => {
       assert.deepEqual(getKnownNeighbors(state, '999'), {});
     });
 
-    it('gives explicit outgoing edges precedence over inferred reverse edges', () => {
+    it('does not override an existing known cardinal/intercardinal destination', () => {
       const state = createInitialState();
       seedStartNode(state, 'Alice', '100', 200, 200);
 
-      // 100 --N--> 205 (implies 205 --S--> 100 unless overridden)
+      // First known edge for 100 -> N is 205 (and 205 -> S is 100)
       processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '205' });
-      // Explicit outgoing 205 --S--> 404 overrides inferred 100
-      processMove(state, { charName: 'Alice', fromId: '205', dir: 'S', toId: '404' });
+      // Subsequent move from 100 -> N to 300 must NOT override 100's first known N destination (205)
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '300' });
 
-      assert.equal(getKnownNeighbors(state, '205').S, '404');
+      assert.equal(getKnownNeighbors(state, '100').N, '205');
+    });
+
+    it('erases the edge and orphaned target node on undoMove when the edge was only crossed once', () => {
+      const state = createInitialState();
+      seedStartNode(state, 'Alice', '100', 200, 200);
+
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+      assert.equal(state.characters['Alice'].location_id, '101');
+      assert.ok(state.nodes['101']);
+      assert.equal(state.mapAdjacency['100']?.length, 1);
+
+      const { edgeRemoved } = undoMove(state, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+      assert.equal(edgeRemoved, true);
+      assert.equal(state.characters['Alice'].location_id, '100');
+      assert.equal(state.mapAdjacency['100'], undefined, 'Edge should be erased when crossed only once');
+      assert.equal(state.nodes['101'], undefined, 'Orphaned target node should be cleaned up');
+      assert.deepEqual(getKnownNeighbors(state, '100'), {});
+    });
+
+    it('preserves the edge on undoMove when the edge has been crossed more than once', () => {
+      const state = createInitialState();
+      seedStartNode(state, 'Alice', '100', 200, 200);
+
+      // Cross 100 -> E -> 101, then 101 -> W -> 100, then 100 -> E -> 101 again
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+      processMove(state, { charName: 'Alice', fromId: '101', dir: 'W', toId: '100' });
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+
+      const { edgeRemoved } = undoMove(state, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+      assert.equal(edgeRemoved, false, 'Edge crossed multiple times must NOT be erased on undo');
+      assert.equal(state.characters['Alice'].location_id, '100');
+      assert.equal(state.mapAdjacency['100']?.length, 1);
+      assert.ok(state.nodes['101']);
+      assert.equal(getKnownNeighbors(state, '100').E, '101');
     });
   });
 });

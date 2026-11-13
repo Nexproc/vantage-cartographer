@@ -49,7 +49,7 @@ const PortalDoorIcon: React.FC<{ inline?: boolean }> = ({ inline = false }) => (
 );
 
 const App: React.FC = () => {
-  const { activeScreen, gameState, isSyncing, connect, crashLand, move, adjustResource } = useGameState();
+  const { activeScreen, gameState, isSyncing, connect, crashLand, move, undoMove, adjustResource } = useGameState();
 
   return (
     <main className={`app-shell ${activeScreen === 'normal' ? 'app-shell--wide' : ''}`}>
@@ -66,6 +66,7 @@ const App: React.FC = () => {
           gameState={gameState}
           isSyncing={isSyncing}
           onMove={move}
+          onUndoMove={undoMove}
           onResourceChange={adjustResource}
         />
       )}
@@ -275,12 +276,14 @@ const NormalScreen: React.FC<{
   gameState: GameState;
   isSyncing: boolean;
   onMove: (loc: string, dir: Direction) => Promise<boolean>;
+  onUndoMove: () => Promise<boolean>;
   onResourceChange: (color: ResourceColor, delta: number) => void;
-}> = ({ gameState, isSyncing, onMove, onResourceChange }) => {
+}> = ({ gameState, isSyncing, onMove, onUndoMove, onResourceChange }) => {
   const [targetLoc, setTargetLoc] = useState('');
   const [selectedDirection, setSelectedDirection] = useState<Direction>(null);
   const [moveError, setMoveError] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
+  const [undoing, setUndoing] = useState(false);
 
   // Keep floating composer bar docked above virtual keyboard on mobile Safari/Chrome
   useEffect(() => {
@@ -304,6 +307,7 @@ const NormalScreen: React.FC<{
   const hasDirection = selectedDirection !== null;
   const hasLocation = /^\d{2,4}$/.test(targetLoc);
   const canMove = hasDirection && hasLocation;
+  const canUndo = gameState.lastMove !== null;
 
   const handleMoveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -321,6 +325,20 @@ const NormalScreen: React.FC<{
       setSelectedDirection(null);
     } else {
       setMoveError('Move failed to reach Host Map. Retry.');
+    }
+  };
+
+  const handleUndo = async () => {
+    if (!canUndo || undoing || moving) return;
+    setMoveError(null);
+    setUndoing(true);
+    const ok = await onUndoMove();
+    setUndoing(false);
+    if (ok) {
+      setTargetLoc('');
+      setSelectedDirection(null);
+    } else {
+      setMoveError('Undo failed to reach Host Map. Retry.');
     }
   };
 
@@ -359,11 +377,39 @@ const NormalScreen: React.FC<{
             </div>
           </div>
 
-          <div className="location-readout" aria-live="polite">
-            <span className="location-readout__label">LOC</span>
-            <span id="current-location-value" className="location-readout__value">
-              #{gameState.location || '---'}
-            </span>
+          <div className="status-right">
+            {canUndo && (
+              <button
+                id="undo-move-btn"
+                type="button"
+                className="undo-btn"
+                onClick={handleUndo}
+                disabled={undoing || moving}
+                aria-label={`Undo move to #${gameState.lastMove?.fromLocation}`}
+                title={`Undo move (return to #${gameState.lastMove?.fromLocation})`}
+              >
+                <svg
+                  className="undo-btn__icon"
+                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M 7.5 5.5 L 3.5 9.5 L 7.5 13.5" />
+                  <path d="M 3.5 9.5 H 12.5 A 4 4 0 0 1 16.5 13.5 V 14.5" />
+                </svg>
+                <span>Undo</span>
+              </button>
+            )}
+            <div className="location-readout" aria-live="polite">
+              <span className="location-readout__label">LOC</span>
+              <span id="current-location-value" className="location-readout__value">
+                #{gameState.location || '---'}
+              </span>
+            </div>
           </div>
         </header>
 

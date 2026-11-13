@@ -155,4 +155,22 @@ describe('Controller GameService.move & End-to-End Move Integration', () => {
       }
     }
   });
+
+  it('sends /undo payload and converts compass Center ("C") to direction="Special"', async () => {
+    await GameService.undo('ABCD', 'Alice', '100', '205', 'N');
+    assert.equal(sentRequests.length, 1);
+    assert.equal(sentRequests[0].endpoint, '/undo');
+    assert.deepEqual(sentRequests[0].body, {
+      gameCode: 'ABCD',
+      playerName: 'Alice',
+      fromLocation: '100',
+      toLocation: '205',
+      direction: 'N',
+    });
+
+    sentRequests.length = 0;
+    await GameService.undo('ABCD', 'Alice', '100', '999', 'C');
+    assert.equal(sentRequests[0].endpoint, '/undo');
+    assert.equal(sentRequests[0].body.direction, 'Special');
+  });
 });
