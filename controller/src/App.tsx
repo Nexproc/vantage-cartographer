@@ -3,19 +3,49 @@ import type { GameState, ResourceColor, Direction } from './types';
 import { useGameState } from './useGameState';
 import { ConnectScreen } from './ConnectScreen';
 
-const PortalSwirlIcon: React.FC<{ className?: string }> = ({ className = 'portal-swirl-icon' }) => (
+const PortalSwirlSvg: React.FC<{ className?: string }> = ({ className = 'portal-swirl-icon' }) => (
   <svg
     className={className}
     viewBox="0 0 24 24"
     fill="none"
     stroke="currentColor"
-    strokeWidth="1.9"
+    strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
     aria-hidden="true"
   >
     <path d="M 3.25 12.6 A 8.5 8.5 0 0 1 20.25 12.6 A 6.75 6.75 0 0 1 6.75 12.6 A 5 5 0 0 1 16.75 12.6 A 3.25 3.25 0 0 1 10.25 12.6 A 1.6 1.6 0 0 1 13.45 12.6" />
   </svg>
+);
+
+const OpenDoorSvg: React.FC<{ className?: string }> = ({ className = 'portal-door-icon' }) => (
+  <svg
+    className={className}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M 14 4.5 H 19 V 19.5" />
+    <path d="M 3 19.5 H 5" />
+    <path d="M 14 19.5 H 21" />
+    <path d="M 5 4.5 L 14 2.5 V 21.5 L 5 19.5 Z" />
+    <circle cx="11.2" cy="12" r="1.05" fill="currentColor" stroke="none" />
+  </svg>
+);
+
+const PortalDoorIcon: React.FC<{ inline?: boolean }> = ({ inline = false }) => (
+  <span
+    className={`portal-door-glyph ${inline ? 'portal-door-glyph--inline' : ''}`}
+    aria-hidden="true"
+  >
+    <PortalSwirlSvg />
+    <span className="portal-glyph-slash">/</span>
+    <OpenDoorSvg />
+  </span>
 );
 
 const App: React.FC = () => {
@@ -272,14 +302,12 @@ const NormalScreen: React.FC<{
 
   const isPortal = selectedDirection === 'C';
   const hasDirection = selectedDirection !== null;
+  const hasLocation = /^\d{2,4}$/.test(targetLoc);
+  const canMove = hasDirection && hasLocation;
 
   const handleMoveSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedDirection) {
-      return;
-    }
-    if (!/^\d{2,4}$/.test(targetLoc)) {
-      setMoveError('Enter a 2 to 4 digit destination location.');
+    if (!selectedDirection || !/^\d{2,4}$/.test(targetLoc)) {
       return;
     }
 
@@ -299,7 +327,7 @@ const NormalScreen: React.FC<{
   const bearingLabel = !selectedDirection
     ? 'Select direction'
     : isPortal
-      ? 'Portal Jump'
+      ? 'Portal / Door'
       : `Bearing ${selectedDirection}`;
 
   return (
@@ -467,14 +495,14 @@ const NormalScreen: React.FC<{
                     className={`compass-node compass-pos-${dir} ${
                       centerPortal ? 'compass-node--portal' : ''
                     }`}
-                    aria-label={centerPortal ? 'Portal or Special movement' : `Direction ${dir}`}
+                    aria-label={centerPortal ? 'Portal or Door movement' : `Direction ${dir}`}
                     aria-pressed={isSelected}
                     onClick={() => {
                       setSelectedDirection((prev) => (prev === dir ? null : dir));
                       if (moveError) setMoveError(null);
                     }}
                   >
-                    {centerPortal ? <PortalSwirlIcon /> : dir}
+                    {centerPortal ? <PortalDoorIcon /> : dir}
                   </button>
                 );
               })}
@@ -528,13 +556,13 @@ const NormalScreen: React.FC<{
             id="submit-move-btn"
             type="submit"
             className={`btn composer-submit-btn ${
-              !hasDirection
+              !canMove
                 ? 'btn--inactive'
                 : isPortal
                   ? 'btn--amber'
                   : 'btn--primary'
             }`}
-            disabled={moving || !hasDirection}
+            disabled={moving || !canMove}
           >
             {moving ? (
               <span className="spinner" aria-hidden="true" />
@@ -542,7 +570,7 @@ const NormalScreen: React.FC<{
               'Move'
             ) : isPortal ? (
               <>
-                <PortalSwirlIcon className="portal-swirl-icon--inline" />
+                <PortalDoorIcon inline />
                 <span>Portal</span>
               </>
             ) : (
