@@ -428,7 +428,11 @@ const NormalScreen: React.FC<{
             {RESOURCE_META.map(({ key, label, hex }) => {
               const count = gameState.resources[key];
               return (
-                <div key={key} className="resource-tile">
+                <div
+                  key={key}
+                  className="resource-tile"
+                  style={{ '--tile-accent': hex } as React.CSSProperties}
+                >
                   <div className="resource-tile__top">
                     <div className="resource-label-group">
                       <span
@@ -497,16 +501,29 @@ const NormalScreen: React.FC<{
                   cy="112"
                   r="84"
                   fill="none"
-                  stroke="rgba(255, 255, 255, 0.08)"
+                  stroke="rgba(226, 204, 162, 0.16)"
                   strokeWidth="1.5"
                 />
                 <circle
                   cx="112"
                   cy="112"
-                  r="42"
+                  r="64"
                   fill="none"
-                  stroke="rgba(255, 255, 255, 0.05)"
-                  strokeDasharray="3 4"
+                  stroke="rgba(226, 204, 162, 0.08)"
+                  strokeDasharray="2 4"
+                  strokeWidth="1"
+                />
+                {/* Vantage Card Compass Diamond & Star Rose */}
+                <polygon
+                  points="112,34 130,94 190,112 130,130 112,190 94,130 34,112 94,94"
+                  fill="rgba(226, 204, 162, 0.03)"
+                  stroke="rgba(226, 204, 162, 0.14)"
+                  strokeWidth="1"
+                />
+                <polygon
+                  points="112,68 156,112 112,156 68,112"
+                  fill="none"
+                  stroke="rgba(226, 204, 162, 0.12)"
                   strokeWidth="1"
                 />
                 <line
@@ -514,7 +531,7 @@ const NormalScreen: React.FC<{
                   y1="28"
                   x2="112"
                   y2="196"
-                  stroke="rgba(255, 255, 255, 0.06)"
+                  stroke="rgba(226, 204, 162, 0.1)"
                   strokeWidth="1"
                 />
                 <line
@@ -522,7 +539,7 @@ const NormalScreen: React.FC<{
                   y1="112"
                   x2="196"
                   y2="112"
-                  stroke="rgba(255, 255, 255, 0.06)"
+                  stroke="rgba(226, 204, 162, 0.1)"
                   strokeWidth="1"
                 />
                 <line
@@ -530,7 +547,7 @@ const NormalScreen: React.FC<{
                   y1="52.6"
                   x2="171.4"
                   y2="171.4"
-                  stroke="rgba(255, 255, 255, 0.04)"
+                  stroke="rgba(226, 204, 162, 0.07)"
                   strokeWidth="1"
                 />
                 <line
@@ -538,7 +555,7 @@ const NormalScreen: React.FC<{
                   y1="52.6"
                   x2="52.6"
                   y2="171.4"
-                  stroke="rgba(255, 255, 255, 0.04)"
+                  stroke="rgba(226, 204, 162, 0.07)"
                   strokeWidth="1"
                 />
               </svg>
