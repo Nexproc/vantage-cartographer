@@ -57,12 +57,13 @@ jobs:
         run: npm run build
 
       # 3. Merge the builds together
-      # We move the controller's dist folder INTO the host's dist folder
+      # Copy root landing page and move controller & host-map builds into dist/
       - name: Merge Outputs
         run: |
           mkdir -p dist
           mkdir -p dist/controller
           mkdir -p dist/host-map
+          cp index.html dist/index.html
           cp -r controller/dist/* dist/controller/
           cp -r host-map/dist/* dist/host-map/
 
