@@ -1,13 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
 import Peer, { type DataConnection } from 'peerjs';
-import type { Character, GameState, MovePayload } from '../types';
+import type { Character, DrawPayload, GameState, MovePayload } from '../types';
 import {
   processMove as applyMove,
   undoMove as revertMove,
+  applyDrawAction,
   updateGlobalCoords as syncGlobalCoords,
   getKnownNeighbors,
   getAllKnownEdges,
+  getGraphSnapshot,
   DIRS,
 } from '../movement';
 
@@ -42,6 +44,7 @@ function drawRoundedRect(
 
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const inkLayerRef = useRef<HTMLCanvasElement | null>(null);
   const [showQR, setShowQR] = useState<boolean>(false);
   const [roomCode, setRoomCode] = useState<string>('----');
   const [isLocalhost, setIsLocalhost] = useState<boolean>(false);
@@ -81,9 +84,20 @@ const HostMap: React.FC = () => {
     setExplorerRoster(list);
   };
 
+  const broadcastMapSync = () => {
+    const knownEdges = getAllKnownEdges(engine.current);
+    const graphSnapshot = getGraphSnapshot(engine.current);
+    connectionsRef.current.forEach((clientConn) => {
+      if (clientConn.open) {
+        clientConn.send({ type: 'MAP_SYNC', knownEdges, graphSnapshot });
+      }
+    });
+  };
+
   const clearDrawings = () => {
     engine.current.drawings = [];
     draw();
+    broadcastMapSync();
   };
 
   const recenterMap = () => {
@@ -151,25 +165,55 @@ const HostMap: React.FC = () => {
     }
     ctx.restore();
 
+    // 2. Group-Anchored Freehand Ink Layer (isolated on offscreen canvas so eraser never erases grid/cards)
+    if (state.drawings.length > 0) {
+      if (!inkLayerRef.current) {
+        inkLayerRef.current = document.createElement('canvas');
+      }
+      const inkCanvas = inkLayerRef.current;
+      if (inkCanvas.width !== canvas.width || inkCanvas.height !== canvas.height) {
+        inkCanvas.width = canvas.width;
+        inkCanvas.height = canvas.height;
+      }
+      const inkCtx = inkCanvas.getContext('2d');
+      if (inkCtx) {
+        inkCtx.clearRect(0, 0, inkCanvas.width, inkCanvas.height);
+        inkCtx.lineCap = 'round';
+        inkCtx.lineJoin = 'round';
+
+        state.drawings.forEach((stroke) => {
+          if (stroke.points.length === 0) return;
+          const grp =
+            stroke.groupId !== undefined ? state.groups[stroke.groupId] : undefined;
+          const gxOffset = grp ? grp.offsetX : 0;
+          const gyOffset = grp ? grp.offsetY : 0;
+
+          inkCtx.save();
+          inkCtx.translate(state.camera.x + gxOffset, state.camera.y + gyOffset);
+          inkCtx.globalCompositeOperation = stroke.isEraser
+            ? 'destination-out'
+            : 'source-over';
+          inkCtx.beginPath();
+          inkCtx.moveTo(stroke.points[0].x, stroke.points[0].y);
+          if (stroke.points.length === 1) {
+            inkCtx.lineTo(stroke.points[0].x + 0.1, stroke.points[0].y + 0.1);
+          } else {
+            for (let i = 1; i < stroke.points.length; i++) {
+              inkCtx.lineTo(stroke.points[i].x, stroke.points[i].y);
+            }
+          }
+          inkCtx.lineWidth = stroke.isEraser ? 24 : 3;
+          inkCtx.strokeStyle = stroke.isEraser ? '#000000' : stroke.color;
+          inkCtx.stroke();
+          inkCtx.restore();
+        });
+
+        ctx.drawImage(inkCanvas, 0, 0);
+      }
+    }
+
     ctx.save();
     ctx.translate(state.camera.x, state.camera.y);
-
-    // 2. Freehand Ink Layer (drawn on an offscreen-compatible composite or directly)
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    state.drawings.forEach((stroke) => {
-      if (stroke.points.length < 2) return;
-      ctx.globalCompositeOperation = stroke.isEraser ? 'destination-out' : 'source-over';
-      ctx.beginPath();
-      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-      for (let i = 1; i < stroke.points.length; i++) {
-        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
-      }
-      ctx.lineWidth = stroke.isEraser ? 26 : 3;
-      ctx.strokeStyle = stroke.isEraser ? '#000000' : stroke.color;
-      ctx.stroke();
-    });
-    ctx.globalCompositeOperation = 'source-over';
 
     // 3. Directional Map Paths
     const drawPathArrow = (
@@ -385,15 +429,6 @@ const HostMap: React.FC = () => {
     return resolvedToId;
   };
 
-  const broadcastMapSync = () => {
-    const knownEdges = getAllKnownEdges(engine.current);
-    connectionsRef.current.forEach((clientConn) => {
-      if (clientConn.open) {
-        clientConn.send({ type: 'MAP_SYNC', knownEdges });
-      }
-    });
-  };
-
   const updateGlobalCoords = () => {
     syncGlobalCoords(engine.current);
   };
@@ -493,6 +528,7 @@ const HostMap: React.FC = () => {
                 color: existingChar?.color,
                 knownNeighbors: getKnownNeighbors(state, locId),
                 knownEdges: getAllKnownEdges(state),
+                graphSnapshot: getGraphSnapshot(state),
               };
             }
 
@@ -535,8 +571,10 @@ const HostMap: React.FC = () => {
                 confirmedLocation: requestedLocation,
                 knownNeighbors: getKnownNeighbors(state, requestedLocation),
                 knownEdges: getAllKnownEdges(state),
+                graphSnapshot: getGraphSnapshot(state),
               };
               draw();
+              shouldBroadcast = true;
             }
 
             // --- ENDPOINT: /move ---
@@ -561,6 +599,7 @@ const HostMap: React.FC = () => {
                 newLocation: resolvedLocation,
                 knownNeighbors: getKnownNeighbors(state, resolvedLocation),
                 knownEdges: getAllKnownEdges(state),
+                graphSnapshot: getGraphSnapshot(state),
               };
               shouldBroadcast = true;
             }
@@ -589,6 +628,19 @@ const HostMap: React.FC = () => {
                 edgeRemoved,
                 knownNeighbors: getKnownNeighbors(state, fromLocation),
                 knownEdges: getAllKnownEdges(state),
+                graphSnapshot: getGraphSnapshot(state),
+              };
+              shouldBroadcast = true;
+            }
+
+            // --- ENDPOINT: /draw ---
+            else if (endpoint === '/draw') {
+              const drawResult = applyDrawAction(state, body as DrawPayload);
+              draw();
+              responseData = {
+                success: drawResult.ok,
+                groupId: drawResult.groupId,
+                graphSnapshot: getGraphSnapshot(state),
               };
               shouldBroadcast = true;
             }
@@ -631,17 +683,42 @@ const HostMap: React.FC = () => {
     if (!canvas) return;
     const state = engine.current;
 
+    const findNearestGroupId = (wx: number, wy: number): number | undefined => {
+      let bestGroupId: number | undefined;
+      let bestDist = Infinity;
+      for (const id in state.nodes) {
+        const n = state.nodes[id];
+        const d = Math.hypot(n.gx - wx, n.gy - wy);
+        if (d < bestDist) {
+          bestDist = d;
+          bestGroupId = n.groupId;
+        }
+      }
+      return bestGroupId;
+    };
+
     const handleDown = (e: MouseEvent) => {
       const wp = { x: e.offsetX - state.camera.x, y: e.offsetY - state.camera.y };
       state.lastMouse = { x: e.offsetX, y: e.offsetY };
 
       if (modeRef.current === 'draw' || modeRef.current === 'erase') {
+        const nearestGroupId = findNearestGroupId(wp.x, wp.y);
+        const grp =
+          nearestGroupId !== undefined ? state.groups[nearestGroupId] : undefined;
+        const localPt = grp
+          ? { x: wp.x - grp.offsetX, y: wp.y - grp.offsetY }
+          : wp;
+
         state.currentStroke = {
+          id: `host-${Date.now()}`,
+          groupId: nearestGroupId,
+          author: 'Host',
           color: penColor,
           isEraser: modeRef.current === 'erase',
-          points: [wp],
+          points: [localPt],
         };
         state.drawings.push(state.currentStroke);
+        draw();
       } else if (modeRef.current === 'drag') {
         const clickedNode = Object.values(state.nodes).find(
           (n) => Math.hypot(n.gx - wp.x, n.gy - wp.y) < 50
@@ -662,7 +739,14 @@ const HostMap: React.FC = () => {
       const dy = mp.y - state.lastMouse.y;
 
       if ((modeRef.current === 'draw' || modeRef.current === 'erase') && state.currentStroke) {
-        state.currentStroke.points.push(wp);
+        const grp =
+          state.currentStroke.groupId !== undefined
+            ? state.groups[state.currentStroke.groupId]
+            : undefined;
+        const localPt = grp
+          ? { x: wp.x - grp.offsetX, y: wp.y - grp.offsetY }
+          : wp;
+        state.currentStroke.points.push(localPt);
         draw();
       } else if (modeRef.current === 'drag') {
         if (state.draggedGroup) {
@@ -680,9 +764,13 @@ const HostMap: React.FC = () => {
     };
 
     const handleUp = () => {
+      const finishedStroke = state.currentStroke !== null;
       state.currentStroke = null;
       state.draggedGroup = null;
       state.isDraggingCamera = false;
+      if (finishedStroke) {
+        broadcastMapSync();
+      }
     };
 
     canvas.addEventListener('mousedown', handleDown);

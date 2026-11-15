@@ -1,5 +1,5 @@
 import Peer, { type DataConnection } from "peerjs";
-import type { Direction, Resources } from './types';
+import type { Direction, GraphPoint, Resources } from './types';
 
 interface ApiResponseMessage {
   type: 'API_RESPONSE';
@@ -12,6 +12,7 @@ interface ApiResponseMessage {
 interface MapSyncMessage {
   type: 'MAP_SYNC';
   knownEdges: Record<string, Record<string, string>>;
+  graphSnapshot?: unknown;
 }
 
 function isApiResponseMessage(val: unknown): val is ApiResponseMessage {
@@ -41,9 +42,13 @@ export class GameService {
     string,
     { resolve: (value: Record<string, unknown>) => void; reject: (reason?: Error) => void }
   > = {};
-  private static mapSyncListeners = new Set<(knownEdges: Record<string, Record<string, string>>) => void>();
+  private static mapSyncListeners = new Set<
+    (knownEdges: Record<string, Record<string, string>>, graphSnapshot?: unknown) => void
+  >();
 
-  static onMapSync(listener: (knownEdges: Record<string, Record<string, string>>) => void): () => void {
+  static onMapSync(
+    listener: (knownEdges: Record<string, Record<string, string>>, graphSnapshot?: unknown) => void
+  ): () => void {
     this.mapSyncListeners.add(listener);
     return () => {
       this.mapSyncListeners.delete(listener);
@@ -112,7 +117,9 @@ export class GameService {
             }
             delete this.pendingRequests[data.reqId];
           } else if (isMapSyncMessage(data)) {
-            this.mapSyncListeners.forEach((listener) => listener(data.knownEdges));
+            this.mapSyncListeners.forEach((listener) =>
+              listener(data.knownEdges, data.graphSnapshot)
+            );
           }
         });
 
@@ -141,17 +148,17 @@ export class GameService {
     if (!this.conn || !this.conn.open) {
       throw new Error('Not connected to a Host Map.');
     }
-    
+
     const reqId = crypto.randomUUID();
-    
+
     return new Promise((resolve, reject) => {
       this.pendingRequests[reqId] = { resolve, reject };
-      
+
       this.conn!.send({
         type: 'API_REQUEST',
         endpoint,
         reqId,
-        body
+        body,
       });
 
       setTimeout(() => {
@@ -171,17 +178,68 @@ export class GameService {
   }
 
   static async crashLand(code: string, name: string, location: string, color: string) {
-    return this.request('/crashland', { gameCode: code, playerName: name, requestedLocation: location, playerColor: color });
+    return this.request('/crashland', {
+      gameCode: code,
+      playerName: name,
+      requestedLocation: location,
+      playerColor: color,
+    });
   }
 
-  static async move(code: string, name: string, currentLoc: string | null, targetLoc: string, direction: Direction) {
+  static async move(
+    code: string,
+    name: string,
+    currentLoc: string | null,
+    targetLoc: string,
+    direction: Direction
+  ) {
     const payloadDir = direction === 'C' ? 'Special' : direction;
-    return this.request('/move', { gameCode: code, playerName: name, currentLocation: currentLoc, targetLocation: targetLoc, direction: payloadDir });
+    return this.request('/move', {
+      gameCode: code,
+      playerName: name,
+      currentLocation: currentLoc,
+      targetLocation: targetLoc,
+      direction: payloadDir,
+    });
   }
 
-  static async undo(code: string, name: string, fromLoc: string, toLoc: string, direction: Exclude<Direction, null>) {
+  static async undo(
+    code: string,
+    name: string,
+    fromLoc: string,
+    toLoc: string,
+    direction: Exclude<Direction, null>
+  ) {
     const payloadDir = direction === 'C' ? 'Special' : direction;
-    return this.request('/undo', { gameCode: code, playerName: name, fromLocation: fromLoc, toLocation: toLoc, direction: payloadDir });
+    return this.request('/undo', {
+      gameCode: code,
+      playerName: name,
+      fromLocation: fromLoc,
+      toLocation: toLoc,
+      direction: payloadDir,
+    });
+  }
+
+  static async draw(
+    code: string,
+    name: string,
+    anchorLocation: string | null,
+    action: 'add' | 'undo' | 'clear',
+    stroke?: {
+      id?: string;
+      color: string;
+      isEraser: boolean;
+      points: GraphPoint[];
+      pointsAreRelativeToAnchor?: boolean;
+    }
+  ) {
+    return this.request('/draw', {
+      gameCode: code,
+      playerName: name,
+      anchorLocation: anchorLocation ?? undefined,
+      action,
+      stroke,
+    });
   }
 
   static async syncResources(code: string, name: string, resources: Resources) {

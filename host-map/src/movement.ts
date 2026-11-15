@@ -1,4 +1,4 @@
-import type { GameState, MovePayload } from './types.ts';
+import type { DrawPayload, GameState, GraphSnapshot, MovePayload, Stroke } from './types.ts';
 
 export const DIRS: Record<string, { x: number; y: number }> = {
   N: { x: 0, y: -1 },
@@ -77,6 +77,48 @@ export const getAllKnownEdges = (
   return result;
 };
 
+export const getGraphSnapshot = (state: GameState): GraphSnapshot => {
+  const nodes: GraphSnapshot['nodes'] = {};
+  for (const id in state.nodes) {
+    const n = state.nodes[id];
+    nodes[id] = {
+      id: n.id,
+      groupId: n.groupId,
+      lx: n.lx,
+      ly: n.ly,
+    };
+  }
+
+  const edges: GraphSnapshot['edges'] = {};
+  for (const u in state.mapAdjacency) {
+    edges[u] = state.mapAdjacency[u].map((e) => ({
+      id: e.id,
+      dir: e.dir,
+      characters: [...e.characters],
+    }));
+  }
+
+  const characters: GraphSnapshot['characters'] = {};
+  for (const c in state.characters) {
+    characters[c] = {
+      color: state.characters[c].color,
+      location_id: state.characters[c].location_id,
+    };
+  }
+
+  const drawings: Stroke[] = state.drawings.map((s) => ({
+    id: s.id,
+    groupId: s.groupId,
+    author: s.author,
+    locationId: s.locationId,
+    color: s.color,
+    isEraser: s.isEraser,
+    points: s.points.map((p) => ({ x: p.x, y: p.y })),
+  }));
+
+  return { nodes, edges, characters, drawings };
+};
+
 export const GRID_SIZE = 80;
 export const SPECIAL_OFFSET = 120;
 
@@ -117,7 +159,7 @@ export const processMove = (
   const toId = existingKnownTarget || moveData.toId;
 
   if (!state.mapAdjacency[fromId]) state.mapAdjacency[fromId] = [];
-  const existingEdge = state.mapAdjacency[fromId].find(e => e.id === toId && e.dir === dir);
+  const existingEdge = state.mapAdjacency[fromId].find((e) => e.id === toId && e.dir === dir);
   if (existingEdge) {
     if (!existingEdge.characters.includes(charName)) existingEdge.characters.push(charName);
     existingEdge.traversalCount = (existingEdge.traversalCount ?? 1) + 1;
@@ -133,7 +175,11 @@ export const processMove = (
   }
 
   if (!state.characters[charName]) {
-    const randomColor = '#' + Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0');
+    const randomColor =
+      '#' +
+      Math.floor(Math.random() * 16777215)
+        .toString(16)
+        .padStart(6, '0');
     state.characters[charName] = { color: randomColor, location_id: toId };
   } else {
     state.characters[charName].location_id = toId;
@@ -181,12 +227,95 @@ export const processMove = (
           state.nodes[n].ly += mergeDy;
         }
       }
+
+      // Snap all drawings belonging to oldGroupId into targetGroup with the exact same relative offset
+      for (const stroke of state.drawings) {
+        if (stroke.groupId === oldGroupId) {
+          stroke.groupId = targetGroup;
+          for (const pt of stroke.points) {
+            pt.x += mergeDx;
+            pt.y += mergeDy;
+          }
+        }
+      }
+
       delete state.groups[oldGroupId];
     }
   }
 
   updateGlobalCoords(state);
   return toId;
+};
+
+export const applyDrawAction = (
+  state: GameState,
+  payload: DrawPayload
+): { ok: boolean; groupId?: number } => {
+  const { action, playerName, anchorLocation, groupId: explicitGroupId, stroke } = payload;
+
+  const anchorNode =
+    (anchorLocation && state.nodes[anchorLocation]) ||
+    (playerName &&
+      state.characters[playerName] &&
+      state.nodes[state.characters[playerName].location_id]);
+
+  const resolvedGroupId = anchorNode ? anchorNode.groupId : explicitGroupId;
+
+  if (action === 'add') {
+    if (!stroke || !Array.isArray(stroke.points) || stroke.points.length === 0) {
+      return { ok: false };
+    }
+    const useRelative = stroke.pointsAreRelativeToAnchor !== false && !!anchorNode;
+    const baseLx = useRelative && anchorNode ? anchorNode.lx : 0;
+    const baseLy = useRelative && anchorNode ? anchorNode.ly : 0;
+
+    const newStroke: Stroke = {
+      id: stroke.id || `${playerName || 'host'}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      groupId: resolvedGroupId,
+      author: playerName,
+      locationId: anchorNode?.id ?? anchorLocation,
+      color: stroke.color || '#f6f2e9',
+      isEraser: Boolean(stroke.isEraser),
+      points: stroke.points.map((pt) => ({
+        x: baseLx + pt.x,
+        y: baseLy + pt.y,
+      })),
+    };
+    state.drawings.push(newStroke);
+    return { ok: true, groupId: resolvedGroupId };
+  }
+
+  if (action === 'undo') {
+    for (let i = state.drawings.length - 1; i >= 0; i--) {
+      const s = state.drawings[i];
+      const matchesAuthor = playerName ? s.author === playerName : true;
+      const matchesGroup =
+        resolvedGroupId !== undefined ? s.groupId === resolvedGroupId : true;
+      if (matchesAuthor && matchesGroup) {
+        state.drawings.splice(i, 1);
+        return { ok: true, groupId: resolvedGroupId };
+      }
+    }
+    return { ok: false, groupId: resolvedGroupId };
+  }
+
+  if (action === 'clear') {
+    state.drawings = state.drawings.filter((s) => {
+      if (playerName && anchorLocation) {
+        return !(s.author === playerName && s.locationId === anchorLocation);
+      }
+      if (playerName) {
+        return s.author !== playerName;
+      }
+      if (resolvedGroupId !== undefined) {
+        return s.groupId !== resolvedGroupId;
+      }
+      return false;
+    });
+    return { ok: true, groupId: resolvedGroupId };
+  }
+
+  return { ok: false };
 };
 
 const isNodeReferenced = (state: GameState, nodeId: string): boolean => {
@@ -202,7 +331,7 @@ const isNodeReferenced = (state: GameState, nodeId: string): boolean => {
   }
   // Check incoming edges
   for (const u in state.mapAdjacency) {
-    if (state.mapAdjacency[u].some(e => e.id === nodeId)) {
+    if (state.mapAdjacency[u].some((e) => e.id === nodeId)) {
       return true;
     }
   }
@@ -223,15 +352,21 @@ export const undoMove = (
 
   // Count total crossings across both forward (fromId --dir--> toId) and reverse (toId --oppDir--> fromId)
   const forwardList = state.mapAdjacency[fromId] || [];
-  const forwardIdx = forwardList.findIndex(e => e.id === toId && e.dir === dir);
+  const forwardIdx = forwardList.findIndex((e) => e.id === toId && e.dir === dir);
   const forwardEdge = forwardIdx >= 0 ? forwardList[forwardIdx] : undefined;
-  const forwardCount = forwardEdge ? Math.max(forwardEdge.traversalCount ?? 1, forwardEdge.characters.length) : 0;
+  const forwardCount = forwardEdge
+    ? Math.max(forwardEdge.traversalCount ?? 1, forwardEdge.characters.length)
+    : 0;
 
   const isSpecial = dir.startsWith('Special');
   const oppDir = !isSpecial ? OPPOSITE_DIRS[dir] : undefined;
   const reverseList = oppDir ? state.mapAdjacency[toId] || [] : [];
-  const reverseEdge = oppDir ? reverseList.find(e => e.id === fromId && e.dir === oppDir) : undefined;
-  const reverseCount = reverseEdge ? Math.max(reverseEdge.traversalCount ?? 1, reverseEdge.characters.length) : 0;
+  const reverseEdge = oppDir
+    ? reverseList.find((e) => e.id === fromId && e.dir === oppDir)
+    : undefined;
+  const reverseCount = reverseEdge
+    ? Math.max(reverseEdge.traversalCount ?? 1, reverseEdge.characters.length)
+    : 0;
 
   const totalCrossings = forwardCount + reverseCount;
 
@@ -248,7 +383,9 @@ export const undoMove = (
       if (edgeRemoved && state.nodes[toId] && !isNodeReferenced(state, toId)) {
         const orphanGroupId = state.nodes[toId].groupId;
         delete state.nodes[toId];
-        const groupHasRemainingNodes = Object.values(state.nodes).some(n => n.groupId === orphanGroupId);
+        const groupHasRemainingNodes = Object.values(state.nodes).some(
+          (n) => n.groupId === orphanGroupId
+        );
         if (!groupHasRemainingNodes) {
           delete state.groups[orphanGroupId];
         }
@@ -264,7 +401,7 @@ export const undoMove = (
         forwardEdge.characterCounts[charName] -= 1;
         if (forwardEdge.characterCounts[charName] <= 0) {
           delete forwardEdge.characterCounts[charName];
-          forwardEdge.characters = forwardEdge.characters.filter(c => c !== charName);
+          forwardEdge.characters = forwardEdge.characters.filter((c) => c !== charName);
         }
       }
     }

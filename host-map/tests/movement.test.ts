@@ -1,6 +1,16 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { processMove, undoMove, getKnownNeighbors, getAllKnownEdges, DIRS, GRID_SIZE, SPECIAL_OFFSET } from '../src/movement.ts';
+import {
+  processMove,
+  undoMove,
+  applyDrawAction,
+  getGraphSnapshot,
+  getKnownNeighbors,
+  getAllKnownEdges,
+  DIRS,
+  GRID_SIZE,
+  SPECIAL_OFFSET,
+} from '../src/movement.ts';
 import type { GameState } from '../src/types.ts';
 
 function createInitialState(): GameState {
@@ -327,6 +337,67 @@ describe('HostMap Movement Logic (processMove)', () => {
       assert.equal(edgeRemoved, false);
       assert.equal(state.characters['Bob'].location_id, '100');
       assert.deepEqual(state.mapAdjacency['100'][0].characters, ['Alice']);
+    });
+
+    it('snaps drawings belonging to two separate player graphs together when their graphs join', () => {
+      const state = createInitialState();
+      // Alice starts at 100 (groupId 0, lx=0, ly=0)
+      seedStartNode(state, 'Alice', '100', 200, 200);
+      // Bob starts at 200 (groupId 1, lx=0, ly=0) and moves East to 201 (lx=80, ly=0)
+      seedStartNode(state, 'Bob', '200', 600, 600);
+      processMove(state, { charName: 'Bob', fromId: '200', dir: 'E', toId: '201' });
+
+      // Alice draws a landmark offset (+10, -15) from node 100
+      applyDrawAction(state, {
+        action: 'add',
+        playerName: 'Alice',
+        anchorLocation: '100',
+        stroke: {
+          color: '#10b981',
+          isEraser: false,
+          points: [{ x: 10, y: -15 }],
+          pointsAreRelativeToAnchor: true,
+        },
+      });
+
+      // Bob draws a landmark offset (+5, +20) from node 201 (which is at lx=80, ly=0 in group 1)
+      applyDrawAction(state, {
+        action: 'add',
+        playerName: 'Bob',
+        anchorLocation: '201',
+        stroke: {
+          color: '#38bdf8',
+          isEraser: false,
+          points: [{ x: 5, y: 20 }],
+          pointsAreRelativeToAnchor: true,
+        },
+      });
+
+      assert.equal(state.drawings.length, 2);
+      assert.equal(state.drawings[0].groupId, state.nodes['100'].groupId);
+      assert.equal(state.drawings[1].groupId, state.nodes['201'].groupId);
+      assert.deepEqual(state.drawings[1].points[0], { x: 85, y: 20 });
+
+      // Now Alice moves North from 100 to 200, merging Bob's graph (group 1) into Alice's graph (group 0)
+      processMove(state, { charName: 'Alice', fromId: '100', dir: 'N', toId: '200' });
+
+      const mergedGroupId = state.nodes['100'].groupId;
+      assert.equal(state.nodes['200'].groupId, mergedGroupId);
+      assert.equal(state.nodes['201'].groupId, mergedGroupId);
+      // Node 200 is now at (0, -80) and Node 201 is at (80, -80)
+      assert.equal(state.nodes['201'].lx, 80);
+      assert.equal(state.nodes['201'].ly, -80);
+
+      // Bob's drawing on 201 must now belong to mergedGroupId and stay at (+5, +20) relative to node 201 -> (85, -60)
+      assert.equal(state.drawings[1].groupId, mergedGroupId);
+      assert.deepEqual(state.drawings[1].points[0], { x: 85, y: -60 });
+
+      // Undo & clear actions
+      const snap = getGraphSnapshot(state);
+      assert.equal(snap.drawings.length, 2);
+      applyDrawAction(state, { action: 'undo', playerName: 'Bob', anchorLocation: '201' });
+      assert.equal(state.drawings.length, 1);
+      assert.equal(state.drawings[0].author, 'Alice');
     });
   });
 });

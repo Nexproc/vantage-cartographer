@@ -18,6 +18,41 @@ export interface LastMoveRecord {
   edgeKey: string | null;
 }
 
+export interface GraphPoint {
+  x: number;
+  y: number;
+}
+
+export interface GraphStroke {
+  id?: string;
+  groupId?: number;
+  author?: string;
+  locationId?: string;
+  color: string;
+  isEraser: boolean;
+  points: GraphPoint[];
+}
+
+export interface GraphNode {
+  id: string;
+  groupId: number;
+  lx: number;
+  ly: number;
+}
+
+export interface GraphEdge {
+  id: string;
+  dir: string;
+  characters: string[];
+}
+
+export interface GraphSnapshot {
+  nodes: Record<string, GraphNode>;
+  edges: Record<string, GraphEdge[]>;
+  characters: Record<string, { color: string; location_id: string }>;
+  drawings: GraphStroke[];
+}
+
 export interface GameState {
   code: string;
   name: string;
@@ -28,4 +63,5 @@ export interface GameState {
   knownEdges: Record<string, Partial<Record<CompassDirection, string>>>;
   edgeTraverseCounts: Record<string, number>;
   lastMove: LastMoveRecord | null;
+  graphSnapshot: GraphSnapshot;
 }

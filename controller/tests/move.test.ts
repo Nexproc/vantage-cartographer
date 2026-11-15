@@ -173,4 +173,30 @@ describe('Controller GameService.move & End-to-End Move Integration', () => {
     assert.equal(sentRequests[0].endpoint, '/undo');
     assert.equal(sentRequests[0].body.direction, 'Special');
   });
+
+  it('sends /draw payload anchored to the player location', async () => {
+    await GameService.draw('ABCD', 'Alice', '100', 'add', {
+      id: 'stroke-1',
+      color: '#10b981',
+      isEraser: false,
+      points: [{ x: 12, y: -8 }],
+      pointsAreRelativeToAnchor: true,
+    });
+
+    assert.equal(sentRequests.length, 1);
+    assert.equal(sentRequests[0].endpoint, '/draw');
+    assert.deepEqual(sentRequests[0].body, {
+      gameCode: 'ABCD',
+      playerName: 'Alice',
+      anchorLocation: '100',
+      action: 'add',
+      stroke: {
+        id: 'stroke-1',
+        color: '#10b981',
+        isEraser: false,
+        points: [{ x: 12, y: -8 }],
+        pointsAreRelativeToAnchor: true,
+      },
+    });
+  });
 });
