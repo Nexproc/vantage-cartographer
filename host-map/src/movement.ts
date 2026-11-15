@@ -253,11 +253,11 @@ export const applyDrawAction = (
 ): { ok: boolean; groupId?: number } => {
   const { action, playerName, anchorLocation, groupId: explicitGroupId, stroke } = payload;
 
-  const anchorNode =
-    (anchorLocation && state.nodes[anchorLocation]) ||
-    (playerName &&
-      state.characters[playerName] &&
-      state.nodes[state.characters[playerName].location_id]);
+  const anchorNode = anchorLocation
+    ? state.nodes[anchorLocation]
+    : playerName && state.characters[playerName]
+      ? state.nodes[state.characters[playerName].location_id]
+      : undefined;
 
   const resolvedGroupId = anchorNode ? anchorNode.groupId : explicitGroupId;
 
