@@ -68,9 +68,12 @@ jobs:
 
       # 4. Upload the combined dist folder as an artifact
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: ./dist
+
+      - name: Wait for artifact indexing
+        run: sleep 3
 
       # 5. Deploy to GitHub Pages
       - name: Deploy to GitHub Pages
