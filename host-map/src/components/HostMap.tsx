@@ -6,6 +6,8 @@ import {
   processMove as applyMove,
   undoMove as revertMove,
   applyDrawAction,
+  exportGameState,
+  importGameState,
   updateGlobalCoords as syncGlobalCoords,
   getKnownNeighbors,
   getAllKnownEdges,
@@ -45,12 +47,29 @@ function drawRoundedRect(
 const HostMap: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inkLayerRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const toastTimerRef = useRef<number | null>(null);
   const [showQR, setShowQR] = useState<boolean>(false);
   const [roomCode, setRoomCode] = useState<string>('----');
   const [isLocalhost, setIsLocalhost] = useState<boolean>(false);
   const [mode, setMode] = useState<'drag' | 'draw' | 'erase'>('drag');
   const [penColor, setPenColor] = useState<string>('#f6f2e9');
   const [explorerRoster, setExplorerRoster] = useState<Array<{ name: string } & Character>>([]);
+  const [statusToast, setStatusToast] = useState<{
+    message: string;
+    tone: 'ok' | 'error';
+  } | null>(null);
+
+  const showToast = (message: string, tone: 'ok' | 'error' = 'ok') => {
+    setStatusToast({ message, tone });
+    if (toastTimerRef.current !== null) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setStatusToast(null);
+      toastTimerRef.current = null;
+    }, 3400);
+  };
 
   const modeRef = useRef(mode);
   useEffect(() => {
@@ -80,6 +99,7 @@ const HostMap: React.FC = () => {
       name,
       color: chars[name].color,
       location_id: chars[name].location_id,
+      resources: chars[name].resources,
     }));
     setExplorerRoster(list);
   };
@@ -98,6 +118,48 @@ const HostMap: React.FC = () => {
     engine.current.drawings = [];
     draw();
     broadcastMapSync();
+  };
+
+  const handleExportGame = () => {
+    try {
+      const payload = exportGameState(engine.current, roomCode);
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const stamp = new Date().toISOString().slice(0, 10);
+      const safeCode = roomCode && roomCode !== '----' ? roomCode.toLowerCase() : 'session';
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `vantage-map-${safeCode}-${stamp}.json`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      showToast(
+        `Exported ${Object.keys(engine.current.nodes).length} locations & ${Object.keys(engine.current.characters).length} explorers`
+      );
+    } catch (err: any) {
+      showToast(`Export failed: ${err?.message || 'Unknown error'}`, 'error');
+    }
+  };
+
+  const handleImportGame = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const summary = importGameState(engine.current, parsed);
+      syncRosterState();
+      recenterMap();
+      broadcastMapSync();
+      showToast(
+        `Imported ${summary.nodeCount} locations, ${summary.characterCount} explorers, ${summary.drawingCount} strokes`
+      );
+    } catch (err: any) {
+      showToast(`Import failed: ${err?.message || 'Invalid save file'}`, 'error');
+    }
   };
 
   const recenterMap = () => {
@@ -526,6 +588,7 @@ const HostMap: React.FC = () => {
                 hasLocation: hasLoc,
                 location: locId,
                 color: existingChar?.color,
+                resources: existingChar?.resources,
                 knownNeighbors: getKnownNeighbors(state, locId),
                 knownEdges: getAllKnownEdges(state),
                 graphSnapshot: getGraphSnapshot(state),
@@ -540,9 +603,11 @@ const HostMap: React.FC = () => {
                 requestedLocation = `${playerName}_dropzone`;
               }
 
+              const prevResources = state.characters[playerName]?.resources;
               state.characters[playerName] = {
                 color: playerColor || '#ffffff',
                 location_id: requestedLocation,
+                ...(prevResources ? { resources: prevResources } : {}),
               };
 
               if (!state.nodes[requestedLocation]) {
@@ -647,7 +712,9 @@ const HostMap: React.FC = () => {
 
             // --- ENDPOINT: /resources ---
             else if (endpoint === '/resources') {
-              console.log(`Resources synced for ${body.playerName}:`, body.resources);
+              if (body?.playerName && body?.resources && state.characters[body.playerName]) {
+                state.characters[body.playerName].resources = { ...body.resources };
+              }
               responseData = { success: true };
             }
 
@@ -1026,6 +1093,68 @@ const HostMap: React.FC = () => {
               <span>Clear Ink</span>
             </button>
           </div>
+
+          <div className="hud-divider" aria-hidden="true" />
+
+          {/* Expedition Save / Load Controls */}
+          <div className="save-controls" role="group" aria-label="Save or load expedition">
+            <button
+              type="button"
+              onClick={handleExportGame}
+              className="icon-action-btn icon-action-btn--brass"
+              title="Export current map, explorer locations, resources, and drawings to a JSON file"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Export</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="icon-action-btn icon-action-btn--brass"
+              title="Import a previously exported Vantage Cartographer JSON save file"
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+              <span>Import</span>
+            </button>
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportGame}
+              className="save-file-input"
+              aria-label="Import expedition save file"
+            />
+          </div>
         </div>
 
         {/* Active Explorers Roster Card */}
@@ -1063,6 +1192,18 @@ const HostMap: React.FC = () => {
           )}
         </aside>
       </header>
+
+      {statusToast && (
+        <div
+          className={`vantage-card host-toast ${
+            statusToast.tone === 'error' ? 'host-toast--error' : 'host-toast--ok'
+          }`}
+          role="status"
+          aria-live="polite"
+        >
+          {statusToast.message}
+        </div>
+      )}
 
       {/* Bottom Legend Card */}
       <div className="vantage-card host-legend" aria-hidden="true">

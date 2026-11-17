@@ -1,4 +1,11 @@
-import type { DrawPayload, GameState, GraphSnapshot, MovePayload, Stroke } from './types.ts';
+import type {
+  DrawPayload,
+  ExportedGameSave,
+  GameState,
+  GraphSnapshot,
+  MovePayload,
+  Stroke,
+} from './types.ts';
 
 export const DIRS: Record<string, { x: number; y: number }> = {
   N: { x: 0, y: -1 },
@@ -103,6 +110,9 @@ export const getGraphSnapshot = (state: GameState): GraphSnapshot => {
     characters[c] = {
       color: state.characters[c].color,
       location_id: state.characters[c].location_id,
+      ...(state.characters[c].resources
+        ? { resources: { ...state.characters[c].resources } }
+        : {}),
     };
   }
 
@@ -409,4 +419,222 @@ export const undoMove = (
 
   updateGlobalCoords(state);
   return { edgeRemoved };
+};
+
+export const exportGameState = (
+  state: GameState,
+  roomCode?: string
+): ExportedGameSave => {
+  const mapAdjacency: ExportedGameSave['state']['mapAdjacency'] = {};
+  for (const u in state.mapAdjacency) {
+    mapAdjacency[u] = state.mapAdjacency[u].map((e) => ({
+      id: e.id,
+      dir: e.dir,
+      characters: [...e.characters],
+      ...(e.traversalCount !== undefined ? { traversalCount: e.traversalCount } : {}),
+      ...(e.characterCounts ? { characterCounts: { ...e.characterCounts } } : {}),
+    }));
+  }
+
+  const characters: ExportedGameSave['state']['characters'] = {};
+  for (const name in state.characters) {
+    const c = state.characters[name];
+    characters[name] = {
+      color: c.color,
+      location_id: c.location_id,
+      ...(c.resources ? { resources: { ...c.resources } } : {}),
+    };
+  }
+
+  const nodes: ExportedGameSave['state']['nodes'] = {};
+  for (const id in state.nodes) {
+    const n = state.nodes[id];
+    nodes[id] = {
+      id: n.id,
+      groupId: n.groupId,
+      lx: n.lx,
+      ly: n.ly,
+      gx: n.gx,
+      gy: n.gy,
+    };
+  }
+
+  const groups: ExportedGameSave['state']['groups'] = {};
+  for (const gId in state.groups) {
+    const numId = Number(gId);
+    groups[numId] = {
+      offsetX: state.groups[numId].offsetX,
+      offsetY: state.groups[numId].offsetY,
+    };
+  }
+
+  const drawings: Stroke[] = state.drawings.map((s) => ({
+    id: s.id,
+    groupId: s.groupId,
+    author: s.author,
+    locationId: s.locationId,
+    color: s.color,
+    isEraser: s.isEraser,
+    points: s.points.map((p) => ({ x: p.x, y: p.y })),
+  }));
+
+  return {
+    format: 'vantage-cartographer-save',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    ...(roomCode ? { roomCode } : {}),
+    state: {
+      mapAdjacency,
+      characters,
+      nodes,
+      groups,
+      globalGroupCounter: state.globalGroupCounter,
+      drawings,
+      camera: { x: state.camera.x, y: state.camera.y },
+    },
+  };
+};
+
+export const importGameState = (
+  targetState: GameState,
+  rawPayload: unknown
+): { nodeCount: number; characterCount: number; drawingCount: number } => {
+  if (!rawPayload || typeof rawPayload !== 'object') {
+    throw new Error('Invalid save file: expected a JSON object.');
+  }
+
+  const root = rawPayload as Record<string, unknown>;
+  if (root.format !== undefined && root.format !== 'vantage-cartographer-save') {
+    throw new Error('Invalid save file: unrecognized save format.');
+  }
+
+  const source =
+    root.state && typeof root.state === 'object'
+      ? (root.state as Record<string, unknown>)
+      : root;
+
+  if (!source.nodes || typeof source.nodes !== 'object') {
+    throw new Error('Invalid save file: missing map nodes.');
+  }
+
+  const nextNodes: GameState['nodes'] = {};
+  let maxGroupId = -1;
+  for (const [id, nRaw] of Object.entries(source.nodes as Record<string, unknown>)) {
+    if (!nRaw || typeof nRaw !== 'object') continue;
+    const n = nRaw as Record<string, unknown>;
+    const groupId = typeof n.groupId === 'number' ? n.groupId : 0;
+    const lx = typeof n.lx === 'number' ? n.lx : 0;
+    const ly = typeof n.ly === 'number' ? n.ly : 0;
+    const gx = typeof n.gx === 'number' ? n.gx : lx;
+    const gy = typeof n.gy === 'number' ? n.gy : ly;
+    nextNodes[id] = { id, groupId, lx, ly, gx, gy };
+    if (groupId > maxGroupId) maxGroupId = groupId;
+  }
+
+  const nextGroups: GameState['groups'] = {};
+  if (source.groups && typeof source.groups === 'object') {
+    for (const [gKey, gRaw] of Object.entries(source.groups as Record<string, unknown>)) {
+      const gId = Number(gKey);
+      if (!Number.isNaN(gId) && gRaw && typeof gRaw === 'object') {
+        const g = gRaw as Record<string, unknown>;
+        nextGroups[gId] = {
+          offsetX: typeof g.offsetX === 'number' ? g.offsetX : 0,
+          offsetY: typeof g.offsetY === 'number' ? g.offsetY : 0,
+        };
+        if (gId > maxGroupId) maxGroupId = gId;
+      }
+    }
+  }
+
+  // Ensure every node's groupId exists in nextGroups
+  for (const id in nextNodes) {
+    const n = nextNodes[id];
+    if (!nextGroups[n.groupId]) {
+      nextGroups[n.groupId] = { offsetX: n.gx - n.lx, offsetY: n.gy - n.ly };
+    }
+  }
+
+  const nextAdjacency: GameState['mapAdjacency'] = {};
+  if (source.mapAdjacency && typeof source.mapAdjacency === 'object') {
+    for (const [u, listRaw] of Object.entries(source.mapAdjacency as Record<string, unknown>)) {
+      if (!Array.isArray(listRaw)) continue;
+      nextAdjacency[u] = listRaw
+        .filter((e): e is Record<string, unknown> => typeof e === 'object' && e !== null)
+        .map((e) => ({
+          id: String(e.id ?? ''),
+          dir: String(e.dir ?? ''),
+          characters: Array.isArray(e.characters) ? e.characters.map(String) : [],
+          ...(typeof e.traversalCount === 'number' ? { traversalCount: e.traversalCount } : {}),
+          ...(e.characterCounts && typeof e.characterCounts === 'object'
+            ? { characterCounts: { ...(e.characterCounts as Record<string, number>) } }
+            : {}),
+        }));
+    }
+  }
+
+  const nextCharacters: GameState['characters'] = {};
+  if (source.characters && typeof source.characters === 'object') {
+    for (const [cName, cRaw] of Object.entries(source.characters as Record<string, unknown>)) {
+      if (!cRaw || typeof cRaw !== 'object') continue;
+      const c = cRaw as Record<string, unknown>;
+      if (typeof c.location_id === 'string') {
+        nextCharacters[cName] = {
+          color: typeof c.color === 'string' ? c.color : '#10b981',
+          location_id: c.location_id,
+          ...(c.resources && typeof c.resources === 'object'
+            ? { resources: { ...(c.resources as Record<string, number>) } }
+            : {}),
+        };
+      }
+    }
+  }
+
+  const nextDrawings: Stroke[] = [];
+  if (Array.isArray(source.drawings)) {
+    for (const sRaw of source.drawings) {
+      if (!sRaw || typeof sRaw !== 'object') continue;
+      const s = sRaw as Record<string, unknown>;
+      if (!Array.isArray(s.points)) continue;
+      const pts = s.points
+        .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
+        .filter((p) => typeof p.x === 'number' && typeof p.y === 'number')
+        .map((p) => ({ x: Number(p.x), y: Number(p.y) }));
+      nextDrawings.push({
+        id: typeof s.id === 'string' ? s.id : undefined,
+        groupId: typeof s.groupId === 'number' ? s.groupId : undefined,
+        author: typeof s.author === 'string' ? s.author : undefined,
+        locationId: typeof s.locationId === 'string' ? s.locationId : undefined,
+        color: typeof s.color === 'string' ? s.color : '#f6f2e9',
+        isEraser: Boolean(s.isEraser),
+        points: pts,
+      });
+    }
+  }
+
+  const savedCounter =
+    typeof source.globalGroupCounter === 'number' ? source.globalGroupCounter : 0;
+  targetState.nodes = nextNodes;
+  targetState.groups = nextGroups;
+  targetState.mapAdjacency = nextAdjacency;
+  targetState.characters = nextCharacters;
+  targetState.drawings = nextDrawings;
+  targetState.currentStroke = null;
+  targetState.draggedGroup = null;
+  targetState.isDraggingCamera = false;
+  targetState.globalGroupCounter = Math.max(savedCounter, maxGroupId + 1);
+
+  if (source.camera && typeof source.camera === 'object') {
+    const cam = source.camera as Record<string, unknown>;
+    if (typeof cam.x === 'number' && typeof cam.y === 'number') {
+      targetState.camera = { x: cam.x, y: cam.y };
+    }
+  }
+
+  updateGlobalCoords(targetState);
+
+  return {
+    nodeCount: Object.keys(nextNodes).length,
+    characterCount: Object.keys(nextCharacters).length,
+    drawingCount: nextDrawings.length,
+  };
 };

@@ -49,7 +49,7 @@ export interface GraphEdge {
 export interface GraphSnapshot {
   nodes: Record<string, GraphNode>;
   edges: Record<string, GraphEdge[]>;
-  characters: Record<string, { color: string; location_id: string }>;
+  characters: Record<string, { color: string; location_id: string; resources?: Partial<Resources> }>;
   drawings: GraphStroke[];
 }
 

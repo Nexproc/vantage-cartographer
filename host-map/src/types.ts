@@ -16,6 +16,7 @@ export interface Stroke {
 export interface Character {
   color: string;
   location_id: string;
+  resources?: Record<string, number>;
 }
 
 export interface Edge {
@@ -80,6 +81,22 @@ export interface GraphSnapshot {
   edges: Record<string, Array<{ id: string; dir: string; characters: string[] }>>;
   characters: Record<string, Character>;
   drawings: Stroke[];
+}
+
+export interface ExportedGameSave {
+  format: 'vantage-cartographer-save';
+  version: number;
+  exportedAt: string;
+  roomCode?: string;
+  state: {
+    mapAdjacency: Record<string, Edge[]>;
+    characters: Record<string, Character>;
+    nodes: Record<string, MapNode>;
+    groups: Record<number, Group>;
+    globalGroupCounter: number;
+    drawings: Stroke[];
+    camera?: Point;
+  };
 }
 
 export interface PeerMessage {

@@ -4,6 +4,8 @@ import {
   processMove,
   undoMove,
   applyDrawAction,
+  exportGameState,
+  importGameState,
   getGraphSnapshot,
   getKnownNeighbors,
   getAllKnownEdges,
@@ -398,6 +400,58 @@ describe('HostMap Movement Logic (processMove)', () => {
       applyDrawAction(state, { action: 'undo', playerName: 'Bob', anchorLocation: '201' });
       assert.equal(state.drawings.length, 1);
       assert.equal(state.drawings[0].author, 'Alice');
+    });
+
+    it('exports and imports the complete game state including nodes, edges, explorer resources, and drawings', () => {
+      const source = createInitialState();
+      seedStartNode(source, 'Alice', '100', 250, 300);
+      source.characters['Alice'].resources = { coins: 7, morale: 4, time: 9 };
+      processMove(source, { charName: 'Alice', fromId: '100', dir: 'E', toId: '101' });
+      applyDrawAction(source, {
+        action: 'add',
+        playerName: 'Alice',
+        anchorLocation: '101',
+        stroke: {
+          color: '#f59e0b',
+          isEraser: false,
+          points: [{ x: 12, y: 18 }],
+          pointsAreRelativeToAnchor: true,
+        },
+      });
+
+      const exported = exportGameState(source, 'ABCD');
+      assert.equal(exported.format, 'vantage-cartographer-save');
+      assert.equal(exported.version, 1);
+      assert.equal(exported.roomCode, 'ABCD');
+
+      const serialized = JSON.parse(JSON.stringify(exported));
+      const target = createInitialState();
+      const summary = importGameState(target, serialized);
+
+      assert.deepEqual(summary, {
+        nodeCount: 2,
+        characterCount: 1,
+        drawingCount: 1,
+      });
+      assert.equal(target.characters['Alice'].location_id, '101');
+      assert.deepEqual(target.characters['Alice'].resources, { coins: 7, morale: 4, time: 9 });
+      assert.equal(target.nodes['101'].gx, 250 + GRID_SIZE);
+      assert.equal(target.nodes['101'].gy, 300);
+      assert.equal(target.drawings.length, 1);
+      assert.deepEqual(target.drawings[0].points[0], { x: GRID_SIZE + 12, y: 18 });
+      assert.deepEqual(getAllKnownEdges(target), {
+        '100': { E: '101' },
+        '101': { W: '100' },
+      });
+    });
+
+    it('rejects invalid import payloads with a descriptive error', () => {
+      const target = createInitialState();
+      assert.throws(() => importGameState(target, null), /expected a JSON object/);
+      assert.throws(
+        () => importGameState(target, { format: 'wrong-format' }),
+        /unrecognized save format/
+      );
     });
   });
 });

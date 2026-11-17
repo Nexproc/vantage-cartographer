@@ -86,15 +86,25 @@ function parseGraphSnapshot(raw: unknown): GraphSnapshot | null {
     }
   }
 
-  const characters: Record<string, { color: string; location_id: string }> = {};
+  const characters: GraphSnapshot['characters'] = {};
   if (obj.characters && typeof obj.characters === 'object') {
     for (const [cName, cRaw] of Object.entries(obj.characters as Record<string, unknown>)) {
       if (cRaw && typeof cRaw === 'object') {
         const c = cRaw as Record<string, unknown>;
         if (typeof c.location_id === 'string') {
+          const parsedRes: Partial<Record<ResourceColor, number>> = {};
+          if (c.resources && typeof c.resources === 'object') {
+            for (const key of ['red', 'blue', 'green', 'yellow', 'purple', 'orange'] as const) {
+              const val = (c.resources as Record<string, unknown>)[key];
+              if (typeof val === 'number') {
+                parsedRes[key] = val;
+              }
+            }
+          }
           characters[cName] = {
             color: typeof c.color === 'string' ? c.color : '#10b981',
             location_id: c.location_id,
+            ...(Object.keys(parsedRes).length > 0 ? { resources: parsedRes } : {}),
           };
         }
       }
@@ -187,16 +197,22 @@ export const useGameState = () => {
     latestState.current = gameState;
   }, [gameState]);
 
-  // Subscribe to real-time MAP_SYNC broadcasts from HostMap (when any player moves, undoes, or draws)
+  // Subscribe to real-time MAP_SYNC broadcasts from HostMap (when any player moves, undoes, draws, or imports a save)
   useEffect(() => {
     return GameService.onMapSync((rawKnownEdges, rawGraphSnapshot) => {
       const authoritativeEdges = parseKnownEdgesMap(rawKnownEdges);
       const parsedSnapshot = parseGraphSnapshot(rawGraphSnapshot);
-      setGameState((prev) => ({
-        ...prev,
-        knownEdges: authoritativeEdges ?? prev.knownEdges,
-        graphSnapshot: parsedSnapshot ?? prev.graphSnapshot,
-      }));
+      setGameState((prev) => {
+        const myChar = prev.name && parsedSnapshot ? parsedSnapshot.characters[prev.name] : undefined;
+        return {
+          ...prev,
+          location: myChar?.location_id ?? prev.location,
+          color: myChar?.color ?? prev.color,
+          resources: myChar?.resources ? { ...prev.resources, ...myChar.resources } : prev.resources,
+          knownEdges: authoritativeEdges ?? prev.knownEdges,
+          graphSnapshot: parsedSnapshot ?? prev.graphSnapshot,
+        };
+      });
     });
   }, []);
 
@@ -217,6 +233,11 @@ export const useGameState = () => {
       const serverNeighbors = parseKnownNeighbors(data.knownNeighbors);
       const serverEdgesMap = parseKnownEdgesMap(data.knownEdges);
       const parsedSnapshot = parseGraphSnapshot(data.graphSnapshot);
+      const restoredResources =
+        parsedSnapshot?.characters[cleanName]?.resources ??
+        (data.resources && typeof data.resources === 'object'
+          ? (data.resources as Partial<Record<ResourceColor, number>>)
+          : undefined);
 
       setGameState((prev) => {
         const nextEdges = serverEdgesMap ? { ...serverEdgesMap } : { ...prev.knownEdges };
@@ -229,6 +250,7 @@ export const useGameState = () => {
           name: cleanName,
           location: existingLoc ?? prev.location,
           color: existingColor ?? prev.color,
+          resources: restoredResources ? { ...prev.resources, ...restoredResources } : prev.resources,
           knownEdges: nextEdges,
           lastMove: null,
           graphSnapshot: parsedSnapshot ?? prev.graphSnapshot,

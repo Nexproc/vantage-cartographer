@@ -377,6 +377,55 @@ body,
   border-color: rgba(248, 113, 113, 0.65);
 }
 
+.save-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-action-btn--brass {
+  background: linear-gradient(180deg, rgba(229, 207, 158, 0.14), rgba(229, 207, 158, 0.05));
+  border-color: var(--brass-border-strong);
+  color: var(--brass-bright);
+}
+
+.icon-action-btn--brass:hover {
+  background: linear-gradient(180deg, rgba(229, 207, 158, 0.24), rgba(229, 207, 158, 0.1));
+  color: var(--text-primary);
+  border-color: var(--brass-bright);
+}
+
+.save-file-input {
+  display: none;
+}
+
+/* Status Toast Pill */
+.host-toast {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 30;
+  pointer-events: none;
+  padding: 9px 15px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  animation: modalFadeIn 150ms ease-out;
+}
+
+.host-toast--ok {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(16, 185, 129, 0.25);
+}
+
+.host-toast--error {
+  background: rgba(40, 14, 18, 0.94);
+  border-color: var(--danger-border);
+  color: #fecaca;
+}
+
 /* Explorer Roster Card (Top Right) */
 .roster-card {
   pointer-events: auto;
